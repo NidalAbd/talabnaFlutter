@@ -162,7 +162,7 @@ class AppInitializer {
             'Preloaded ${menu.length} category menu items in background',
             category: 'INIT');
       }).catchError((e) {
-        DebugLogger.log('Error preloading menu: $e', category: 'INIT_ERROR');
+        DebugLogger.log('Error w preloading menu: $e', category: 'INIT_ERROR');
       });
     } catch (e) {
       DebugLogger.log('Error in background data preload: $e',
