@@ -6,6 +6,7 @@ import 'package:talabna/utils/debug_logger.dart';
 import '../blocs/service_post/service_post_bloc.dart';
 import '../blocs/service_post/service_post_event.dart';
 import '../core/service_locator.dart';
+import '../utils/deep_link_diagnostics.dart';
 import 'navigation_service.dart';
 
 class DeepLinkService {
@@ -121,7 +122,17 @@ class DeepLinkService {
   void _handleIncomingLink(String? link) {
     if (link == null) return;
 
+    DeepLinkDiagnostics().addEvent('Deep link received', details: link);
     DebugLogger.log('Runtime deep link received: $link', category: 'DEEPLINK');
+
+    // Log all components of the URI
+    try {
+      final uri = Uri.parse(link);
+      DeepLinkDiagnostics().addEvent('URI components',
+          details: 'Scheme: ${uri.scheme}, Host: ${uri.host}, Path: ${uri.path}, Segments: ${uri.pathSegments}');
+    } catch (e) {
+      DeepLinkDiagnostics().addEvent('URI parse error', details: e.toString(), isError: true);
+    }
     _debugLinkInfo(link);
 
     final linkData = _processLinkData(link);

@@ -21,6 +21,7 @@ import 'package:talabna/screens/reel/reels_screen.dart';
 import 'package:talabna/screens/reel/reels_state_manager.dart';
 import 'package:talabna/screens/service_post/service_post_view.dart';
 import 'package:talabna/utils/debug_logger.dart';
+import 'package:talabna/utils/deep_link_diagnostics.dart';
 
 import 'core/deep_link_service.dart';
 import 'data/models/user.dart';
@@ -186,6 +187,8 @@ class Routes {
 
   // Main route generator
   static Route<dynamic> generateRoute(RouteSettings settings) {
+    DeepLinkDiagnostics().addEvent('Route requested', details: 'Name: ${settings.name}');
+
     DebugLogger.log('Routing to: ${settings.name}', category: 'NAVIGATION');
 
     final args = settings.arguments as Map<String, dynamic>?;
@@ -250,6 +253,41 @@ class Routes {
         if (settings.name != null && settings.name!.startsWith('talabna://')) {
           _isNavigating = wasNavigating;
           return _handleUrlSchemePath(settings);
+        }
+
+        if (settings.name != null && settings.name!.contains('talbna.cloud/api/deep-link')) {
+          try {
+            DeepLinkDiagnostics().addEvent('Deep link URL detected', details: settings.name);
+            final uri = Uri.parse(settings.name!);
+            final segments = uri.pathSegments;
+
+            DeepLinkDiagnostics().addEvent('Parsed URI segments', details: segments.toString());
+
+            if (segments.length >= 4 &&
+                segments[0] == 'api' &&
+                segments[1] == 'deep-link') {
+
+              final type = segments[2];
+              final id = segments[3];
+
+              DeepLinkDiagnostics().addEvent('Deep link extracted', details: 'Type: $type, ID: $id');
+
+              // Redirect to appropriate handler based on type
+              if (type == 'reels' || type == 'reel') {
+                DeepLinkDiagnostics().addEvent('Handling as reels deep link', details: 'ID: $id');
+                return _handleReelsRoute({'postId': id, 'isReel': true});
+              } else if (type == 'service-post' || type == 'service_post' || type == 'post') {
+                DeepLinkDiagnostics().addEvent('Handling as service post deep link', details: 'ID: $id');
+                return _handleServicePostRoute({'postId': id});
+              }
+            }
+          } catch (e) {
+            DeepLinkDiagnostics().addEvent('Error parsing deep link URL', details: e.toString(), isError: true);
+          }
+        }
+
+        if (settings.name?.startsWith('http') == true) {
+          DeepLinkDiagnostics().addEvent('Unhandled URL route', details: settings.name, isError: true);
         }
 
         // Handle standard routes
@@ -657,16 +695,16 @@ class Routes {
 
   // Error route
   static Route<dynamic> _errorRoute(String message) {
-    DebugLogger.log('Route error: $message', category: 'NAVIGATION');
+    DeepLinkDiagnostics().addEvent('Error route triggered', details: message, isError: true);
 
-    return _createRoute(
-      Scaffold(
-        appBar: AppBar(title: const Text('خطأ')),
+    return MaterialPageRoute(
+      builder: (context) => Scaffold(
+        appBar: AppBar(title: const Text('Error')),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const Icon(Icons.error_outline, color: Colors.red, size: 60),
               const SizedBox(height: 16),
               Text(
                 message,
@@ -676,15 +714,19 @@ class Routes {
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: () async {
-                  await DebugLogger.printAllLogs();
+                  // Navigate to diagnostic screen
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const DeepLinkDiagnosticsScreen(),
+                    ),
+                  );
                 },
-                child: const Text('عرض سجلات التصحيح'),
+                child: const Text('View Diagnostic Information'),
               ),
             ],
           ),
         ),
       ),
-      RouteSettings(name: 'error'),
     );
   }
 

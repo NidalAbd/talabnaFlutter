@@ -170,28 +170,28 @@ class CategoriesRepository {
     }
   }
 
-  Future<List<SubCategoryMenu>> getSubCategoriesMenu(int categoryId,
-      {bool forceRefresh = false}) async {
+  Future<List<SubCategoryMenu>> getSubCategoriesMenu(
+      int categoryId,
+      {bool forceRefresh = false}
+      ) async {
     try {
-      // Check if we have valid cache and forceRefresh is false
-      if (!forceRefresh &&
-          localDataSource.isCacheValid('cached_subcategory_menu_$categoryId')) {
-        final cachedMenu =
-            await localDataSource.getSubCategoriesMenu(categoryId);
+      // Use cache if not forcing refresh and the cache is valid
+      if (!forceRefresh && localDataSource.isCacheValid('cached_subcategory_menu_$categoryId')) {
+        final cachedMenu = await localDataSource.getSubCategoriesMenu(categoryId);
         if (cachedMenu.isNotEmpty) {
-          DebugLogger.log(
-              'Returning cached subcategory menu for category $categoryId',
+          DebugLogger.log('Returning cached subcategory menu for category $categoryId',
               category: 'REPOSITORY');
           return cachedMenu;
         }
       }
 
-      // Fetch fresh data from remote
+      // Otherwise fetch from API
       DebugLogger.log(
-          'Fetching subcategory menu for category $categoryId from API',
-          category: 'REPOSITORY');
-      final remoteMenu =
-          await remoteDataSource.getSubCategoriesMenu(categoryId);
+          'Fetching subcategory menu for category $categoryId from API (forceRefresh: $forceRefresh)',
+          category: 'REPOSITORY'
+      );
+
+      final remoteMenu = await remoteDataSource.getSubCategoriesMenu(categoryId);
 
       // Cache the new data
       await localDataSource.cacheSubCategoriesMenu(categoryId, remoteMenu);

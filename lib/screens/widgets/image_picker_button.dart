@@ -56,6 +56,8 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
   void initState() {
     super.initState();
     widget.initialPhotosNotifier.addListener(() {
+      if (!mounted) return; // Check if widget is still mounted
+
       if (widget.initialPhotosNotifier.value != null) {
         setState(() {
           _pickedImages = widget.initialPhotosNotifier.value!.map((photo) {
@@ -69,7 +71,7 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
 
           // Initialize _localMedia with null values for API media
           _localMedia =
-              List<String?>.filled(_pickedImages.length, null, growable: true);
+          List<String?>.filled(_pickedImages.length, null, growable: true);
 
           // Generate thumbnails for API videos
           _generateThumbnailsForApiVideos();
@@ -77,6 +79,7 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
       }
     });
   }
+
 
   String _getProperUrl(String? src) {
     if (src == null) return '';
@@ -209,11 +212,12 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
 
       print('Adding video: ${videoPhoto.src}, isVideo: ${videoPhoto.isVideo}');
 
+      if (!mounted) return; // Check mounted status before final setState
       setState(() {
         _pickedImages.add(videoPhoto);
         _localMedia.add(thumbnailPath);
         _thumbnails.add(thumbnailPath);
-        _progressNotifier.value = 1.0; // Complete progress
+        _progressNotifier.value = 1.0;
       });
 
       _submitLocalImages();
@@ -230,6 +234,8 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
   }
 
   void _submitLocalImages() {
+    if (!mounted) return; // Add mounted check
+
     final List<Photo> updatedImages = [];
 
     for (int i = 0; i < _pickedImages.length; i++) {

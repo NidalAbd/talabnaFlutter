@@ -24,6 +24,12 @@ class _HomeScreenState extends State<HomeScreen>
   // Controller that handles all the business logic
   late HomeScreenController _controller;
 
+  // Auto-retry variables
+  bool _isRetrying = false;
+  int _retryAttempts = 0;
+  static const int _maxRetryAttempts = 3;
+  static const Duration _retryDelay = Duration(seconds: 3);
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +70,30 @@ class _HomeScreenState extends State<HomeScreen>
     _controller.onAppLifecycleStateChange(state);
   }
 
+  // Method to handle automatic retry logic
+  void _handleAutomaticRetry() {
+    if (!_isRetrying && _retryAttempts < _maxRetryAttempts) {
+      setState(() {
+        _isRetrying = true;
+      });
+
+      Future.delayed(_retryDelay, () {
+        if (mounted) {
+          _retryAttempts++;
+          _controller.retryUserProfileLoad();
+          setState(() {
+            _isRetrying = false;
+          });
+        }
+      });
+    }
+  }
+
+  // Reset retry counter when successful load occurs
+  void _resetRetryCounter() {
+    _retryAttempts = 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!mounted) return Container();
@@ -76,24 +106,34 @@ class _HomeScreenState extends State<HomeScreen>
 
     // Theme colors
     final backgroundColor =
-        isDarkMode ? AppTheme.darkPrimaryColor : Colors.white;
+    isDarkMode ? AppTheme.darkPrimaryColor : Colors.white;
     final primaryColor =
-        isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
+    isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
     final textColor =
-        isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor;
+    isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor;
     final iconColor =
-        isDarkMode ? AppTheme.darkIconColor : AppTheme.lightIconColor;
+    isDarkMode ? AppTheme.darkIconColor : AppTheme.lightIconColor;
 
     return BlocConsumer<UserProfileBloc, UserProfileState>(
       listener: (context, state) {
         _controller.onUserProfileStateChange(state);
+
+        // Reset retry counter on success
+        if (state is UserProfileLoadSuccess) {
+          _resetRetryCounter();
+        }
+
+        // Trigger automatic retry on failure
+        if (state is UserProfileLoadFailure) {
+          _handleAutomaticRetry();
+        }
       },
       builder: (context, state) {
         if (!mounted) return Container();
 
         // Use controller to determine which screen to show based on state
         if ((state is UserProfileLoadInProgress ||
-                state is UserProfileInitial) &&
+            state is UserProfileInitial) &&
             _controller.categories.isEmpty) {
           return _buildLoadingScreen(backgroundColor, primaryColor);
         }
@@ -138,26 +178,33 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 60),
+            const Icon(Icons.refresh, color: Colors.red, size: 60),
             const SizedBox(height: 16),
-            Text(
-              error,
-              style: const TextStyle(fontSize: 16, color: Colors.red),
-              textAlign: TextAlign.center,
-            ),
             const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => _controller.retryUserProfileLoad(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+            if (_isRetrying)
+              Column(
+                children: [
+                  CircularProgressIndicator(color: primaryColor),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Retrying automatically... ($_retryAttempts/$_maxRetryAttempts)',
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                ],
+              )
+            else
+              ElevatedButton(
+                onPressed: () => _controller.retryUserProfileLoad(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Retry Manually'),
               ),
-              child: const Text('Retry'),
-            ),
           ],
         ),
       ),
@@ -237,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen>
                 backgroundColor: primaryColor,
                 foregroundColor: Colors.white,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
@@ -256,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     // Use consistent accent color for logo
     final accentColor =
-        isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightSecondaryColor;
+    isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightSecondaryColor;
 
     return AppBar(
       elevation: 0,
@@ -414,9 +461,9 @@ class _HomeScreenState extends State<HomeScreen>
             duration: const Duration(milliseconds: 50),
             decoration: isSelected
                 ? BoxDecoration(
-                    color: primaryColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(14),
-                  )
+              color: primaryColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(14),
+            )
                 : null,
             constraints: const BoxConstraints(
               minWidth: 40,

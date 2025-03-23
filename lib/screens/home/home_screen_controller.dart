@@ -23,7 +23,6 @@ import '../../data/models/category_menu.dart';
 import '../../data/repositories/categories_repository.dart';
 import '../../data/datasources/local/local_category_data_source.dart';
 import '../../routes.dart';
-import '../../services/deep_link_service.dart';
 import '../../utils/custom_routes.dart';
 import '../../utils/debug_logger.dart';
 
@@ -52,6 +51,7 @@ class HomeScreenController {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   bool _disposed = false;
+  bool _isPaginationInProgress = false;
 
   final Language language = Language();
 
@@ -150,14 +150,44 @@ class HomeScreenController {
     }
   }
 
+// In HomeScreenController class, modify the onDidUpdateWidget method:
+
   void onDidUpdateWidget(StatefulWidget oldWidget) {
     // When returning to this screen, we should not show loading if we already have categories
     if (isLoading && _categories.isNotEmpty) {
+      DebugLogger.log(
+          'Returning to home screen with existing categories, clearing loading state',
+          category: 'HOME_SCREEN');
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (state.mounted) {
           state.setState(() {
             isLoading = false;
           });
+
+          // Also ensure service posts are refreshed for the currently selected category
+          if (_servicePostBloc != null && _selectedCategory > 0 && _selectedCategory != 7) {
+            _servicePostBloc.add(
+              GetServicePostsByCategoryEvent(
+                _selectedCategory,
+                1,
+                forceRefresh: false, // Use cached data first for immediate display
+              ),
+            );
+
+            // Then refresh in background after a short delay
+            Future.delayed(Duration(milliseconds: 300), () {
+              if (state.mounted) {
+                _servicePostBloc.add(
+                  GetServicePostsByCategoryEvent(
+                    _selectedCategory,
+                    1,
+                    forceRefresh: true, // Get fresh data in background
+                  ),
+                );
+              }
+            });
+          }
         }
       });
     }
@@ -720,18 +750,20 @@ class HomeScreenController {
   void onCategorySelected(int categoryId, BuildContext context, User user) {
     if (!state.mounted) return;
 
+    if (_isPaginationInProgress && categoryId == _selectedCategory) {
+      return;
+    }
     state.setState(() => _selectedCategory = categoryId);
 
-    // Keep this condition - it prevents toggling for category 6 and 0
+    // Special handling for categories 6 and 0
     if (categoryId == 6 || categoryId == 0) {
       toggleSubcategoryGridView(canToggle: false);
-
-      // For category 6, we'll handle the service post loading in MainMenuPostScreen
-      // So no additional code needed here, the component will handle it
     }
 
+    // Handle Reels category
     if (categoryId == 7) {
       _navigateToReels(context, user);
+      return;
     }
 
     // Load service posts for the selected category
@@ -740,17 +772,25 @@ class HomeScreenController {
         GetServicePostsByCategoryEvent(
           categoryId,
           1,
-          forceRefresh: true, // Always use fresh posts from API
+          forceRefresh: true,
         ),
       );
 
-      // Also load subcategories
+      // Use the existing memory cache first for instant display
       if (_subcategoryBloc != null) {
         _subcategoryBloc.add(
           FetchSubcategories(
             categoryId: categoryId,
             showLoadingState: false,
-            forceRefresh: false, // Try cache first, then API
+          ),
+        );
+
+        // Force refresh immediately instead of delaying it
+        _subcategoryBloc.add(
+          FetchSubcategories(
+            categoryId: categoryId,
+            showLoadingState: false,
+            forceRefresh: true,
           ),
         );
       }

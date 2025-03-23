@@ -10,6 +10,8 @@ import 'package:talabna/screens/service_post/service_post_category.dart';
 import 'package:talabna/screens/service_post/subcategory_grid_view.dart';
 import 'package:talabna/utils/debug_logger.dart';
 
+import '../../blocs/service_post/service_post_state.dart';
+
 class MainMenuPostScreen extends StatefulWidget {
   final int category;
   final int userID;
@@ -47,6 +49,10 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
 
   // Flag to determine if widgets have been initialized
   bool _hasInitializedWidgets = false;
+
+  // Add a flag to track when we're toggling views
+  bool _isTogglingView = false;
+
 
   @override
   void initState() {
@@ -133,9 +139,22 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
   void didUpdateWidget(MainMenuPostScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // If category or showSubcategoryGridView changed, we need to reinitialize
-    if (oldWidget.category != widget.category ||
-        oldWidget.showSubcategoryGridView != widget.showSubcategoryGridView) {
+    // Check if we're toggling between subcategory view and posts view
+    if (oldWidget.showSubcategoryGridView != widget.showSubcategoryGridView) {
+      _isTogglingView = true;
+
+      // After a brief delay, reset the flag
+      Future.delayed(Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() {
+            _isTogglingView = false;
+          });
+        }
+      });
+    }
+
+    // If category changed, we need to reinitialize
+    if (oldWidget.category != widget.category) {
       // Start performance tracking
       _renderStopwatch.reset();
       _renderStopwatch.start();
@@ -151,31 +170,94 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
         _prefetchSubcategories();
       }
 
-      // For category 6, trigger service post fetching directly
+      // Force immediate loading of content
+      _ensureContentIsLoaded();
+    }
+    // If returning to the same category, ensure we don't trigger unnecessary reloads
+    else if (oldWidget.category == widget.category && _hasInitializedWidgets) {
+      // Log that we're returning to the same category
+      DebugLogger.log(
+          'Returning to same category ${widget.category}, preserving state',
+          category: 'MAIN_MENU');
+
+      // No need to reinitialize widgets, they already exist
+      // But we can ensure data is refreshed in the background after a delay
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Future.delayed(Duration(milliseconds: 300), () {
+            _refreshDataInBackground();
+            _ensureContentIsLoaded();
+          });
+        }
+      });
+    }
+  }
+
+  void _ensureContentIsLoaded() {
+    if (mounted) {
+      // Force loading if needed
+      if (!widget.showSubcategoryGridView) {
+        widget.servicePostBloc.add(
+          GetServicePostsByCategoryEvent(
+            widget.category,
+            1,
+            forceRefresh: true,
+            showLoadingState: true,
+          ),
+        );
+
+        // Add a safety timeout - if content doesn't load, try again
+        Future.delayed(Duration(seconds: 2), () {
+          if (mounted) {
+            final state = widget.servicePostBloc.state;
+            if (state is ServicePostLoadSuccess) {
+              if (state.servicePosts.isEmpty) {
+                DebugLogger.log(
+                    'No posts loaded after 2s, retrying for category ${widget.category}',
+                    category: 'MAIN_MENU'
+                );
+                widget.servicePostBloc.add(
+                  GetServicePostsByCategoryEvent(
+                    widget.category,
+                    1,
+                    forceRefresh: true,
+                    showLoadingState: true,
+                  ),
+                );
+              }
+            }
+          }
+        });
+      }
     }
   }
 
   void _initializeChildWidgets() {
-    // Create the widgets only once and cache them
-    _subcategoryWidget = SubcategoryListView(
-      key: ValueKey('subcategory_${widget.category}'),
-      categoryId: widget.category,
-      userId: widget.userID,
-      servicePostBloc: widget.servicePostBloc,
-      userProfileBloc: BlocProvider.of<UserProfileBloc>(context),
-      user: widget.user,
-    );
+    // Only create widgets if they haven't been initialized yet or if the keys need updating
+    if (!_hasInitializedWidgets) {
+      _subcategoryWidget = SubcategoryListView(
+        key: ValueKey('subcategory_${widget.category}'),
+        categoryId: widget.category,
+        userId: widget.userID,
+        servicePostBloc: widget.servicePostBloc,
+        userProfileBloc: BlocProvider.of<UserProfileBloc>(context),
+        user: widget.user,
+      );
 
-    _servicePostWidget = ServicePostScreen(
-      key: ValueKey('service_post_${widget.category}'),
-      category: widget.category,
-      userID: widget.userID,
-      servicePostBloc: widget.servicePostBloc,
-      showSubcategoryGridView: widget.showSubcategoryGridView,
-      user: widget.user,
-    );
+      _servicePostWidget = ServicePostScreen(
+        key: ValueKey('service_post_${widget.category}'),
+        category: widget.category,
+        userID: widget.userID,
+        servicePostBloc: widget.servicePostBloc,
+        showSubcategoryGridView: widget.showSubcategoryGridView,
+        user: widget.user,
+      );
 
-    _hasInitializedWidgets = true;
+      _hasInitializedWidgets = true;
+      DebugLogger.log(
+          'Initialized widgets for category ${widget.category}',
+          category: 'MAIN_MENU');
+    }
   }
 
   void _prefetchSubcategories() {
@@ -209,11 +291,7 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
             child: _hasInitializedWidgets
-                ? (widget.category == 6
-                    ? _servicePostWidget // Always show service posts for category 6
-                    : (widget.showSubcategoryGridView
-                        ? _subcategoryWidget
-                        : _servicePostWidget))
+                ? _buildContent()
                 : const Center(child: CircularProgressIndicator()),
           ),
 
@@ -224,6 +302,32 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
     );
   }
 
+  Widget _buildContent() {
+    // Skip loading states when toggling for smoother experience
+    if (_isTogglingView) {
+      return widget.category == 6
+          ? _servicePostWidget // Always show service posts for category 6
+          : (widget.showSubcategoryGridView
+          ? _subcategoryWidget
+          : _servicePostWidget);
+    }
+
+    // Check the ServicePostBloc state
+    final postState = widget.servicePostBloc.state;
+    if (postState is ServicePostLoadSuccess &&
+        postState.servicePosts.isNotEmpty &&
+        !widget.showSubcategoryGridView) {
+      // If we have posts, directly show the service post widget
+      return _servicePostWidget;
+    }
+
+    // Normal case
+    return widget.category == 6
+        ? _servicePostWidget // Always show service posts for category 6
+        : (widget.showSubcategoryGridView
+        ? _subcategoryWidget
+        : _servicePostWidget);
+  }
   Widget _buildPerformanceOverlay() {
     // Stop the stopwatch if it's still running
     if (_renderStopwatch.isRunning) {

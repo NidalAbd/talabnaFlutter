@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
-import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../utils/constants.dart';
+import 'package:talabna/screens/widgets/video_feed_controller.dart';
+import 'feed_video_player.dart';
+import 'feed_video_player_wrapper.dart';
 
 class ImageGrid extends StatefulWidget {
   final List<String> imageUrls;
@@ -14,6 +16,9 @@ class ImageGrid extends StatefulWidget {
   final bool autoPlayVideos;
   final bool showFullscreenOption;
   final String uniqueId; // Add a unique identifier for this instance
+  final double maxHeight;
+  final bool isReelsMode; // New flag for reels mode
+  final Function(String)? onVideoReelsTap; // New callback for opening video in reels mode
 
   const ImageGrid({
     super.key,
@@ -21,8 +26,10 @@ class ImageGrid extends StatefulWidget {
     this.onImageTap,
     this.autoPlayVideos = true,
     this.showFullscreenOption = true,
-    // Use a default unique ID if not provided, but encourage users to provide one
     this.uniqueId = '',
+    this.maxHeight = 400.0,
+    this.isReelsMode = false, // Default to regular feed mode
+    this.onVideoReelsTap, // Optional callback for opening in reels
   });
 
   @override
@@ -33,9 +40,9 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
   late PageController _pageController;
   int _currentIndex = 0;
   late RouteObserver<PageRoute> routeObserver;
-  bool _isMuted = true;
-  final Map<String, VideoPlayerController> _activeControllers = {};
-  static const double MAX_MEDIA_HEIGHT = 500.0;
+
+  // Global feed controller for all videos
+  final VideoFeedController _videoFeedController = VideoFeedController();
 
   // Used to detect when the user is manually scrolling
   bool _isUserScrolling = false;
@@ -82,12 +89,12 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
     super.didChangeDependencies();
     try {
       routeObserver = ModalRoute.of(context)
-              ?.navigator
-              ?.widget
-              .observers
-              .firstWhere((observer) => observer is RouteObserver<PageRoute>,
-                  orElse: () => RouteObserver<PageRoute>())
-          as RouteObserver<PageRoute>;
+          ?.navigator
+          ?.widget
+          .observers
+          .firstWhere((observer) => observer is RouteObserver<PageRoute>,
+          orElse: () => RouteObserver<PageRoute>())
+      as RouteObserver<PageRoute>;
       routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute);
     } catch (e) {
       // Handle the case where route observer is not available
@@ -113,42 +120,12 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
   }
 
   void _pauseAllVideos() {
-    for (var controller in _activeControllers.values) {
-      if (controller.value.isInitialized && controller.value.isPlaying) {
-        controller.pause();
-      }
-    }
+    _videoFeedController.pauseAll();
   }
 
   void _resumeCurrentVideoIfVisible() {
-    // Only resume if the widget is visible
-    if (!_isVisible || _isPaused) return;
-
+    // Resume is now handled by the VideoFeedController
     _isPaused = false;
-
-    // Check if there's a video at the current index
-    if (_currentIndex < widget.imageUrls.length) {
-      final currentUrl = widget.imageUrls[_currentIndex];
-      if (currentUrl.endsWith('.mp4') && widget.autoPlayVideos) {
-        final fullUrl = '${Constants.apiBaseUrl}/$currentUrl';
-        final controller = _activeControllers[fullUrl];
-        if (controller != null && controller.value.isInitialized) {
-          controller.play();
-        }
-      }
-    }
-  }
-
-  void _toggleMute() {
-    setState(() {
-      _isMuted = !_isMuted;
-    });
-
-    for (var controller in _activeControllers.values) {
-      if (controller.value.isInitialized) {
-        controller.setVolume(_isMuted ? 0 : 1);
-      }
-    }
   }
 
   void _handleVideoEnd() {
@@ -166,180 +143,116 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
       });
     }
   }
-
-  void _releaseUnusedControllers() {
-    // Find controllers that are not at the current index or neighboring indices
-    // to release resources for videos that aren't likely to be viewed soon
-
-    final currentUrl = widget.imageUrls[_currentIndex];
-    final currentFullUrl = '${Constants.apiBaseUrl}/$currentUrl';
-
-    // Keep the current, previous, and next controllers
-    final keysToKeep = <String>{};
-    if (_activeControllers.containsKey(currentFullUrl)) {
-      keysToKeep.add(currentFullUrl);
+  // Handle video tap to open reels if needed
+  void _handleVideoTap(String url) {
+    // If we're already in reels mode, just toggle play/pause
+    if (widget.isReelsMode) {
+      return; // The tap will be handled by the video player itself
     }
 
-    // Add previous and next if they exist
-    if (_currentIndex > 0) {
-      final prevUrl = widget.imageUrls[_currentIndex - 1];
-      if (prevUrl.endsWith('.mp4')) {
-        final prevFullUrl = '${Constants.apiBaseUrl}/$prevUrl';
-        if (_activeControllers.containsKey(prevFullUrl)) {
-          keysToKeep.add(prevFullUrl);
-        }
-      }
-    }
+    // Otherwise, if we have a callback to open in reels mode, use it
+    if (widget.onVideoReelsTap != null) {
+      // Pause current video
+      _pauseAllVideos();
 
-    if (_currentIndex < widget.imageUrls.length - 1) {
-      final nextUrl = widget.imageUrls[_currentIndex + 1];
-      if (nextUrl.endsWith('.mp4')) {
-        final nextFullUrl = '${Constants.apiBaseUrl}/$nextUrl';
-        if (_activeControllers.containsKey(nextFullUrl)) {
-          keysToKeep.add(nextFullUrl);
-        }
-      }
-    }
-
-    // Dispose controllers that are not needed
-    final keysToRemove = <String>[];
-    _activeControllers.forEach((url, controller) {
-      if (!keysToKeep.contains(url)) {
-        if (controller.value.isInitialized) {
-          controller.pause();
-          controller.dispose();
-        }
-        keysToRemove.add(url);
-      }
-    });
-
-    for (final key in keysToRemove) {
-      _activeControllers.remove(key);
+      // Call the callback with the URL to open in reels mode
+      widget.onVideoReelsTap!(url);
     }
   }
 
+  // Updated build method to move page indicator
   @override
   Widget build(BuildContext context) {
     if (widget.imageUrls.isEmpty) return const SizedBox.shrink();
 
     final screenWidth = MediaQuery.of(context).size.width;
     final currentUrl = widget.imageUrls[_currentIndex];
-    final isVideo = currentUrl.toLowerCase().endsWith('.mp4');
+
+    // Calculate appropriate height based on mode
+    double effectiveHeight = widget.isReelsMode
+        ? MediaQuery.of(context).size.height
+        : widget.maxHeight;
 
     // Wrap the entire widget with a visibility detector
     return VisibilityDetector(
       key: Key(_visibilityKey),
       onVisibilityChanged: (info) {
-        final isVisible = info.visibleFraction >
-            0.1; // Consider visible if at least 10% is shown
+        final isVisible = info.visibleFraction > 0.1;
 
         if (mounted && isVisible != _isVisible) {
           setState(() {
             _isVisible = isVisible;
           });
 
-          if (isVisible) {
-            _resumeCurrentVideoIfVisible();
-          } else {
+          if (!isVisible) {
             _pauseAllVideos();
           }
         }
       },
       child: Container(
         width: screenWidth,
-        height: MAX_MEDIA_HEIGHT,
+        height: effectiveHeight,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: widget.isReelsMode
+              ? BorderRadius.zero
+              : BorderRadius.circular(8),
         ),
-        child: Stack(
+        child: Column(
           children: [
-            // Render content
-            PageView.builder(
-              controller: _pageController,
-              itemCount: widget.imageUrls.length,
-              onPageChanged: (index) {
-                setState(() {
-                  _currentIndex = index;
-                  _isUserScrolling = false;
-                });
-                // Handle video playback when page changes
-                _pauseAllVideos();
-                _resumeCurrentVideoIfVisible();
+            // Main content area
+            Expanded(
+              child: Stack(
+                children: [
+                  // Render content
+                  PageView.builder(
+                    controller: _pageController,
+                    itemCount: widget.imageUrls.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentIndex = index;
+                        _isUserScrolling = false;
+                      });
+                    },
+                    itemBuilder: (context, index) {
+                      final url = widget.imageUrls[index];
+                      final isVideoMedia = url.toLowerCase().endsWith('.mp4');
+                      final videoId = '${widget.uniqueId}_${index}_${url.hashCode}';
 
-                // Clean up unused controllers to save memory
-                _releaseUnusedControllers();
-              },
-              itemBuilder: (context, index) {
-                final url = widget.imageUrls[index];
-                final isCurrentVideo = url.toLowerCase().endsWith('.mp4');
-
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: Colors.black.withOpacity(0.05),
+                      return Container(
+                        decoration: BoxDecoration(
+                          borderRadius: widget.isReelsMode
+                              ? BorderRadius.zero
+                              : BorderRadius.circular(8),
+                          color: Colors.black,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: widget.isReelsMode
+                              ? BorderRadius.zero
+                              : BorderRadius.circular(8),
+                          child: isVideoMedia
+                              ? _buildVideoItem(url, videoId, effectiveHeight, screenWidth, index)
+                              : _buildImageItem(url, effectiveHeight),
+                        ),
+                      );
+                    },
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: isCurrentVideo
-                        ? VideoItem(
-                            url: '${Constants.apiBaseUrl}/$url',
-                            shouldPlay: _currentIndex == index &&
-                                widget.autoPlayVideos &&
-                                _isVisible &&
-                                !_isPaused,
-                            isMuted: _isMuted,
-                            onToggleMute: _toggleMute,
-                            maxHeight: MAX_MEDIA_HEIGHT,
-                            onVideoEnd: _handleVideoEnd,
-                            onControllerCreated: (controller, url) {
-                              _activeControllers[url] = controller;
-                            },
-                            onPlayStateChanged: (isPlaying) {
-                              // You could track play state here if needed
-                            },
-                          )
-                        : GestureDetector(
-                            onTap: widget.onImageTap != null
-                                ? () => widget.onImageTap!(url)
-                                : null,
-                            child: ImageContainer(
-                              url: url,
-                              maxHeight: MAX_MEDIA_HEIGHT,
-                            ),
-                          ),
-                  ),
-                );
-              },
+                ],
+              ),
             ),
 
-            // Page indicator
+            // Page indicator below content
             if (widget.imageUrls.length > 1)
-              Positioned(
-                bottom: 16,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: SmoothPageIndicator(
-                      controller: _pageController,
-                      count: widget.imageUrls.length,
-                      effect: WormEffect(
-                        dotWidth: 8,
-                        dotHeight: 8,
-                        activeDotColor: Colors.white,
-                        dotColor: Colors.white.withOpacity(0.5),
-                        radius: 4,
-                      ),
-                    ),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: SmoothPageIndicator(
+                  controller: _pageController,
+                  count: widget.imageUrls.length,
+                  effect: WormEffect(
+                    dotWidth: 6,
+                    dotHeight: 6,
+                    activeDotColor: Colors.white,
+                    dotColor: Colors.white.withOpacity(0.5),
+                    radius: 3,
                   ),
                 ),
               ),
@@ -349,17 +262,62 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
     );
   }
 
+  // Updated _buildVideoItem method for ImageGrid
+  Widget _buildVideoItem(String url, String videoId, double height, double width, int index) {
+    if (widget.isReelsMode) {
+      // In reels mode, just show the video player
+      return FeedVideoPlayerWrapper(
+        url: '${Constants.apiBaseUrl}/$url',
+        videoId: videoId,
+        maxHeight: height,
+        maxWidth: width,
+        feedController: _videoFeedController,
+        onVideoEnd: _handleVideoEnd,
+        autoPlay: widget.autoPlayVideos && _currentIndex == index && _isVisible && !_isPaused,
+        borderRadius: BorderRadius.zero,
+        isReelsMode: true,
+      );
+    } else {
+      // In regular mode, provide the reels button callback
+      return FeedVideoPlayerWrapper(
+        url: '${Constants.apiBaseUrl}/$url',
+        videoId: videoId,
+        maxHeight: height,
+        maxWidth: width,
+        feedController: _videoFeedController,
+        onVideoEnd: _handleVideoEnd,
+        autoPlay: widget.autoPlayVideos && _currentIndex == index && _isVisible && !_isPaused,
+        borderRadius: BorderRadius.circular(8),
+        isReelsMode: false,
+        onReelsTap: () => _handleVideoTap(url),
+      );
+    }
+  }
+
+  // Build image item
+  Widget _buildImageItem(String url, double height) {
+    return GestureDetector(
+      onTap: widget.onImageTap != null
+          ? () => widget.onImageTap!(url)
+          : null,
+      child: ImageContainer(
+        url: url,
+        maxHeight: height,
+        isReelsMode: widget.isReelsMode,
+      ),
+    );
+  }
+
+  // Helper to check if any videos are in the list
+  bool _videoIsPresent() {
+    return widget.imageUrls.any((url) => url.toLowerCase().endsWith('.mp4'));
+  }
+
   @override
   void dispose() {
     _autoScrollTimer?.cancel();
     _pageController.removeListener(_handleScroll);
     _pageController.dispose();
-
-    // Clean up all video controllers
-    for (var controller in _activeControllers.values) {
-      controller.dispose();
-    }
-    _activeControllers.clear();
 
     try {
       routeObserver.unsubscribe(this);
@@ -374,38 +332,45 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
 class ImageContainer extends StatelessWidget {
   final String url;
   final double maxHeight;
+  final bool isReelsMode;
 
   const ImageContainer({
     super.key,
     required this.url,
     required this.maxHeight,
+    this.isReelsMode = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final imageUrl = url.startsWith('http')
+            ? url
+            : '${Constants.apiBaseUrl}/$url';
+
         return CachedNetworkImage(
-          imageUrl: '${Constants.apiBaseUrl}/$url',
-          fit: BoxFit.cover,
+          imageUrl: imageUrl,
+          fit: isReelsMode ? BoxFit.cover : BoxFit.contain,
           imageBuilder: (context, imageProvider) {
             return Image(
               image: imageProvider,
-              fit: BoxFit.cover,
+              fit: isReelsMode ? BoxFit.cover : BoxFit.contain,
               height: maxHeight,
               width: constraints.maxWidth,
             );
           },
           placeholder: (context, url) => Container(
-            color: Colors.grey[200],
+            color: Colors.black,
             child: const Center(
               child: CircularProgressIndicator(
                 strokeWidth: 2,
+                color: Colors.white,
               ),
             ),
           ),
           errorWidget: (context, url, error) => Container(
-            color: Colors.grey[200],
+            color: Colors.black,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -418,7 +383,7 @@ class ImageContainer extends StatelessWidget {
                 Text(
                   'Failed to load image',
                   style: TextStyle(
-                    color: Colors.grey[600],
+                    color: Colors.grey[400],
                     fontSize: 12,
                   ),
                 ),
@@ -428,473 +393,5 @@ class ImageContainer extends StatelessWidget {
         );
       },
     );
-  }
-}
-
-class VideoItem extends StatefulWidget {
-  final String url;
-  final bool shouldPlay;
-  final bool isMuted;
-  final VoidCallback onToggleMute;
-  final double maxHeight;
-  final VoidCallback? onVideoEnd;
-  final Function(bool isPlaying)? onPlayStateChanged;
-  final Function(VideoPlayerController controller, String url)?
-      onControllerCreated;
-
-  const VideoItem({
-    super.key,
-    required this.url,
-    this.shouldPlay = false,
-    required this.isMuted,
-    required this.onToggleMute,
-    required this.maxHeight,
-    this.onVideoEnd,
-    this.onPlayStateChanged,
-    this.onControllerCreated,
-  });
-
-  @override
-  _VideoItemState createState() => _VideoItemState();
-}
-
-class _VideoItemState extends State<VideoItem>
-    with SingleTickerProviderStateMixin {
-  late VideoPlayerController _controller;
-  bool _isInitialized = false;
-  final ValueNotifier<Duration> _videoProgress = ValueNotifier(Duration.zero);
-  bool _isUserInteracting = false;
-  bool _showControls = false;
-  late AnimationController _animationController;
-  Timer? _controlsTimer;
-  bool _isBuffering = false;
-  bool _isDisposed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _initializeController();
-  }
-
-  Future<void> _initializeController() async {
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
-
-    try {
-      if (!mounted) return;
-
-      setState(() {
-        _isBuffering = true;
-      });
-
-      await _controller.initialize();
-
-      if (_isDisposed) {
-        return;
-      }
-
-      _controller.setLooping(true);
-      _controller.setVolume(widget.isMuted ? 0 : 1);
-
-      // Notify parent about the controller
-      widget.onControllerCreated?.call(_controller, widget.url);
-
-      // Register listeners
-      _controller.addListener(_videoListener);
-
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-          _isBuffering = false;
-        });
-
-        if (widget.shouldPlay) {
-          _controller.play();
-          widget.onPlayStateChanged?.call(true);
-        }
-      }
-    } catch (e) {
-      print('Error initializing video: $e');
-      print('Video URL: ${widget.url}');
-      if (mounted) {
-        setState(() {
-          _isBuffering = false;
-        });
-      }
-    }
-  }
-
-  void _videoListener() {
-    if (_isDisposed) return;
-
-    if (_controller.value.isBuffering && !_isBuffering) {
-      if (mounted) {
-        setState(() {
-          _isBuffering = true;
-        });
-      }
-    } else if (!_controller.value.isBuffering && _isBuffering) {
-      if (mounted) {
-        setState(() {
-          _isBuffering = false;
-        });
-      }
-    }
-
-    // Update progress
-    if (!_isUserInteracting && mounted) {
-      _videoProgress.value = _controller.value.position;
-    }
-
-    // Handle video ended event
-    if (_controller.value.position >= _controller.value.duration &&
-        _controller.value.duration.inMilliseconds > 0) {
-      widget.onVideoEnd?.call();
-    }
-  }
-
-  void _showControlsWithAutoHide() {
-    if (!mounted) return;
-
-    setState(() {
-      _showControls = true;
-    });
-    _resetControlsTimer();
-  }
-
-  void _resetControlsTimer() {
-    _controlsTimer?.cancel();
-    _controlsTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _showControls = false;
-        });
-      }
-    });
-  }
-
-  void _togglePlayPause() {
-    if (!mounted || !_isInitialized) return;
-
-    setState(() {
-      if (_controller.value.isPlaying) {
-        _controller.pause();
-        widget.onPlayStateChanged?.call(false);
-      } else {
-        _controller.play();
-        widget.onPlayStateChanged?.call(true);
-        _resetControlsTimer();
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return SizedBox(
-        height: widget.maxHeight,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(
-                strokeWidth: 2,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final videoWidth = _controller.value.size.width;
-        final videoHeight = _controller.value.size.height;
-        final videoAspectRatio = videoWidth / videoHeight;
-        final screenWidth = constraints.maxWidth;
-
-        // Calculate dimensions
-        double finalWidth = screenWidth;
-        double finalHeight = screenWidth / videoAspectRatio;
-
-        // Handle tall videos (center crop) vs short videos (letterbox)
-        BoxFit fitMode;
-        Alignment alignment;
-
-        if (finalHeight > widget.maxHeight) {
-          // Video is taller than our max height - we'll center crop
-          finalHeight = widget.maxHeight;
-          fitMode = BoxFit.cover;
-          alignment = Alignment.center;
-        } else {
-          // Video is shorter than max height - we'll letterbox
-          fitMode = BoxFit.contain;
-          alignment = Alignment.center;
-        }
-
-        return GestureDetector(
-          onTap: _showControlsWithAutoHide,
-          child: Container(
-            width: finalWidth,
-            height: finalHeight,
-            color: Colors.black,
-            child: Stack(
-              children: [
-                // Video player
-                Positioned.fill(
-                  child: FittedBox(
-                    fit: fitMode,
-                    alignment: alignment,
-                    child: SizedBox(
-                      width: videoWidth,
-                      height: videoHeight,
-                      child: VideoPlayer(_controller),
-                    ),
-                  ),
-                ),
-
-                // Buffering indicator
-                if (_isBuffering)
-                  const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      strokeWidth: 2,
-                    ),
-                  ),
-
-                // Video controls overlay (conditionally visible)
-                if (_showControls) _buildVideoControls(),
-
-                // Play button when paused (only when controls are not showing)
-                if (!_showControls && !_controller.value.isPlaying)
-                  Center(
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _togglePlayPause,
-                        customBorder: const CircleBorder(),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow,
-                            color: Colors.white,
-                            size: 32,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildVideoControls() {
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withOpacity(0.2),
-                Colors.black.withOpacity(0.7),
-              ],
-              stops: const [0.7, 1.0],
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Progress section
-              ValueListenableBuilder(
-                valueListenable: _videoProgress,
-                builder: (context, Duration value, _) {
-                  // Make sure we have valid double values for the slider
-                  final maxDuration =
-                      _controller.value.duration.inSeconds.toDouble().isFinite
-                          ? _controller.value.duration.inSeconds.toDouble()
-                          : 0.0;
-                  final current = value.inSeconds
-                      .toDouble()
-                      .clamp(0.0, maxDuration > 0 ? maxDuration : 0.0);
-
-                  return Column(
-                    children: [
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 2,
-                          thumbShape: const RoundSliderThumbShape(
-                            enabledThumbRadius: 6,
-                          ),
-                          overlayShape: const RoundSliderOverlayShape(
-                            overlayRadius: 14,
-                          ),
-                          activeTrackColor: Colors.white,
-                          inactiveTrackColor: Colors.white.withOpacity(0.3),
-                          thumbColor: Colors.white,
-                          overlayColor: Colors.white.withOpacity(0.3),
-                        ),
-                        child: Slider(
-                          value: current,
-                          min: 0.0,
-                          max: maxDuration > 0.0 ? maxDuration : 1.0,
-                          // Ensure max is never 0
-                          onChangeStart: (_) {
-                            _isUserInteracting = true;
-                            _controlsTimer
-                                ?.cancel(); // Don't hide controls while interacting
-                          },
-                          onChanged: (newValue) {
-                            _videoProgress.value =
-                                Duration(seconds: newValue.toInt());
-                          },
-                          onChangeEnd: (newValue) {
-                            _isUserInteracting = false;
-                            try {
-                              _controller
-                                  .seekTo(Duration(seconds: newValue.toInt()));
-                            } catch (e) {
-                              print('Error seeking: $e');
-                            }
-                            _resetControlsTimer(); // Resume auto-hide
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _formatDuration(value),
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 12),
-                            ),
-                            Text(
-                              _formatDuration(_controller.value.duration),
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-
-              // Control buttons
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        _controller.value.isPlaying
-                            ? Icons.pause
-                            : Icons.play_arrow,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      onPressed: _togglePlayPause,
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(
-                        widget.isMuted ? Icons.volume_off : Icons.volume_up,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      onPressed: () {
-                        widget.onToggleMute();
-                        _resetControlsTimer();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.fullscreen,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      onPressed: () {
-                        // Handle fullscreen mode here
-                        _resetControlsTimer();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
-  }
-
-  @override
-  void didUpdateWidget(VideoItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // If URL changed, we need to reinitialize the controller
-    if (oldWidget.url != widget.url) {
-      _controller.removeListener(_videoListener);
-      _controller.dispose();
-      _isInitialized = false;
-      _initializeController();
-      return;
-    }
-
-    // Handle mute state changes
-    if (oldWidget.isMuted != widget.isMuted && _isInitialized) {
-      _controller.setVolume(widget.isMuted ? 0 : 1);
-    }
-
-    // Handle play state changes
-    if (_isInitialized) {
-      if (widget.shouldPlay && !_controller.value.isPlaying) {
-        _controller.play();
-        widget.onPlayStateChanged?.call(true);
-      } else if (!widget.shouldPlay && _controller.value.isPlaying) {
-        _controller.pause();
-        widget.onPlayStateChanged?.call(false);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _isDisposed = true;
-    _controlsTimer?.cancel();
-    _animationController.dispose();
-
-    if (_isInitialized) {
-      _controller.removeListener(_videoListener);
-      // Note: We don't dispose the controller here as it's now managed by the parent
-      // The parent will handle disposing it when appropriate
-    }
-
-    super.dispose();
   }
 }

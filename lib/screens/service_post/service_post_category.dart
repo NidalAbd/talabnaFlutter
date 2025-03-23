@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:talabna/blocs/service_post/service_post_bloc.dart';
@@ -35,7 +37,7 @@ class ServicePostScreenState extends State<ServicePostScreen>
   @override
   bool get wantKeepAlive => true;
 
-  final ScrollController _scrollCategoryPostController = ScrollController();
+  final ScrollController _scrollController = ScrollController();
 
   // Pagination state
   int _currentPage = 1;
@@ -43,39 +45,36 @@ class ServicePostScreenState extends State<ServicePostScreen>
   bool _isLoadingMore = false;
 
   // Track post IDs to prevent duplicates
-  final Set<int> _loadedPostIds = {};
+  late  Set<int> _loadedPostIds = {};
 
   // Content state
-  List<ServicePost> _servicePostsCategory = [];
+  List<ServicePost> _posts = [];
   bool _hasError = false;
   String _errorMessage = '';
 
   // Performance tracking
   final Stopwatch _loadStopwatch = Stopwatch();
   bool _isFirstLoad = true;
-
-  // Flag to track if first load is complete
   bool _initialLoadComplete = false;
+
+  // Prevent duplicate requests
+  bool _isRefreshing = false;
 
   // Post deletion callback
   late Function onPostDeleted = (int postId) {
-    setState(() {
-      _servicePostsCategory.removeWhere((post) => post.id == postId);
-      _loadedPostIds.remove(postId);
-    });
+    if (mounted) {
+      setState(() {
+        _posts.removeWhere((post) => post.id == postId);
+        _loadedPostIds.remove(postId);
+      });
+    }
   };
 
   @override
   void initState() {
     super.initState();
-
-    // Start tracking load time
     _loadStopwatch.start();
-
-    // Set up scroll controller for pagination
-    _scrollCategoryPostController.addListener(_onScrollCategoryPost);
-
-    // Load initial data
+    _scrollController.addListener(_onScroll);
     _loadInitialData();
   }
 
@@ -83,48 +82,93 @@ class ServicePostScreenState extends State<ServicePostScreen>
   void didUpdateWidget(ServicePostScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // If category changed, we need to reload
+    // Reset state if category changes
     if (oldWidget.category != widget.category) {
+      DebugLogger.log(
+          'Category changed from ${oldWidget.category} to ${widget.category}, resetting state',
+          category: 'SERVICE_POST_SCREEN');
       _resetState();
       _loadInitialData();
+    }
+    // If returning to same category with existing data, don't load again
+    else if (_posts.isNotEmpty && _initialLoadComplete) {
+      DebugLogger.log(
+          'Returning to category ${widget.category} with existing data (${_posts.length} posts)',
+          category: 'SERVICE_POST_SCREEN');
+
+      if (_isLoadingMore || _isFirstLoad) {
+        setState(() {
+          _isLoadingMore = false;
+          _isFirstLoad = false;
+        });
+      }
+    }
+    // If category is the same but we have no posts, try to load silently
+    else if (_posts.isEmpty && !_isFirstLoad && !_isLoadingMore && !_isRefreshing) {
+      _loadSilently();
     }
   }
 
   void _resetState() {
-    _currentPage = 1;
-    _hasReachedMax = false;
-    _isLoadingMore = false;
-    _servicePostsCategory.clear();
-    _loadedPostIds.clear(); // Clear tracked post IDs
-    _hasError = false;
-    _errorMessage = '';
-    _isFirstLoad = true;
-    _initialLoadComplete = false;
+    if (mounted) {
+      _currentPage = 1;
+      _hasReachedMax = false;
+      _isLoadingMore = false;
+      _isRefreshing = false;
+      _posts = [];  // Don't use clear() to avoid UI flash
+      _loadedPostIds.clear();
+      _hasError = false;
+      _errorMessage = '';
+      _isFirstLoad = true;
+      _initialLoadComplete = false;
 
-    // Reset stopwatch for timing the new load
-    _loadStopwatch.reset();
-    _loadStopwatch.start();
+      _loadStopwatch.reset();
+      _loadStopwatch.start();
+    }
   }
 
   void _loadInitialData() {
-    // Request the first page of posts for this category
+    DebugLogger.log(
+        'Loading initial data for category ${widget.category}',
+        category: 'SERVICE_POST_SCREEN');
+
     widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
       widget.category,
-      _currentPage,
-      forceRefresh: true, // Always get fresh data on initial load
+      1, // Always start with page 1 for initial load
+      forceRefresh: true,
+      showLoadingState: true,
     ));
   }
 
-  void _onScrollCategoryPost() {
-    // Only load more if not already loading and not at the max
-    if (!_isLoadingMore &&
-        !_hasReachedMax &&
-        _scrollCategoryPostController.offset >=
-            _scrollCategoryPostController.position.maxScrollExtent - 200 &&
-        !_scrollCategoryPostController.position.outOfRange) {
-      setState(() {
-        _isLoadingMore = true;
-      });
+  void _loadSilently() {
+    DebugLogger.log(
+        'Loading silently for category ${widget.category}',
+        category: 'SERVICE_POST_SCREEN');
+
+    widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
+      widget.category,
+      1,
+      forceRefresh: true,
+      showLoadingState: false,
+    ));
+  }
+
+  void _onScroll() {
+    // Skip if already loading or at the end
+    if (_isLoadingMore || _hasReachedMax || _isRefreshing) {
+      return;
+    }
+
+    // Preload when approaching the bottom (70% of the way there)
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+
+    if (currentScroll >= maxScroll * 0.7) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = true;
+        });
+      }
 
       _currentPage++;
 
@@ -135,40 +179,44 @@ class ServicePostScreenState extends State<ServicePostScreen>
       widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
         widget.category,
         _currentPage,
-        forceRefresh: true, // Always force refresh for pagination
+        forceRefresh: true,
+        showLoadingState: false,
       ));
     }
   }
 
-  Future<void> _handleRefreshCategoryPost() async {
-    DebugLogger.log('Refreshing posts for category ${widget.category}',
+  Future<void> _handleRefresh() async {
+    // Prevent duplicate refreshes
+    if (_isRefreshing) return Future.value();
+
+    _isRefreshing = true;
+
+    DebugLogger.log(
+        'Manual refresh for category ${widget.category}',
         category: 'SERVICE_POST_SCREEN');
 
-    // Reset to page 1
+    // Reset pagination
     _currentPage = 1;
     _hasReachedMax = false;
-    _servicePostsCategory.clear();
-    _loadedPostIds.clear(); // Clear tracked post IDs
-    _isFirstLoad = true;
 
-    // Track refresh time
-    _loadStopwatch.reset();
-    _loadStopwatch.start();
-
-    // Request fresh data
+    // Trigger data load without clearing existing posts yet
+    // This prevents the screen from flickering during refresh
     widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
       widget.category,
       _currentPage,
-      forceRefresh: true, // Always get fresh data on refresh
+      forceRefresh: true,
+      showLoadingState: false,
     ));
 
-    // Return a Future that completes after a short delay to allow the refresh indicator to show
-    return Future.delayed(const Duration(milliseconds: 500));
+    // Complete the refresh after a reasonable delay
+    return Future.delayed(const Duration(milliseconds: 800), () {
+      _isRefreshing = false;
+    });
   }
 
-  void _handleCategoryPostLoadSuccess(
-      List<ServicePost> servicePosts, bool hasReachedMax) {
-    // If this is the first load, log performance
+  void _handleLoadSuccess(List<ServicePost> servicePosts, bool hasReachedMax) {
+    if (!mounted) return;
+
     if (_isFirstLoad) {
       _loadStopwatch.stop();
       _isFirstLoad = false;
@@ -179,89 +227,144 @@ class ServicePostScreenState extends State<ServicePostScreen>
           category: 'PERFORMANCE');
     }
 
-    // Filter out duplicates based on post ID
-    final List<ServicePost> uniquePosts = [];
+    DebugLogger.log(
+        'Handling success with ${servicePosts.length} posts on page $_currentPage, existing posts: ${_posts.length}',
+        category: 'PAGINATION');
+
+    // Handle first page (seamless replacement)
+    if (_currentPage == 1) {
+      // Create a new list with the updated posts
+      final List<ServicePost> newPosts = List<ServicePost>.from(servicePosts);
+      final Set<int> newPostIds = {};
+
+      for (final post in servicePosts) {
+        if (post.id != null) {
+          newPostIds.add(post.id!);
+        }
+      }
+
+      // Update state in one go to prevent flashing
+      if (mounted) {
+        setState(() {
+          _posts = newPosts;
+          _loadedPostIds = newPostIds;
+          _hasReachedMax = hasReachedMax;
+          _isLoadingMore = false;
+          _isRefreshing = false;
+          _hasError = false;
+        });
+      }
+
+      DebugLogger.log(
+          'Replaced posts list with ${servicePosts.length} posts for page 1',
+          category: 'SERVICE_POST_SCREEN');
+      return;
+    }
+
+    // Handle pagination (no UI update if no new posts)
+    if (servicePosts.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _hasReachedMax = true;
+          _isLoadingMore = false;
+          _isRefreshing = false;
+        });
+      }
+      return;
+    }
+
+    // Filter duplicates without creating intermediate collections
+    final newPosts = <ServicePost>[];
+    final newPostIds = <int>{};
+
     for (final post in servicePosts) {
       if (post.id != null && !_loadedPostIds.contains(post.id)) {
-        uniquePosts.add(post);
-        _loadedPostIds.add(post.id!);
+        newPosts.add(post);
+        newPostIds.add(post.id!);
       }
     }
 
-    setState(() {
-      if (_currentPage == 1) {
-        // For first page, replace the entire list
-        _servicePostsCategory = uniquePosts;
-      } else {
-        // For pagination, append only new unique posts
-        _servicePostsCategory = [..._servicePostsCategory, ...uniquePosts];
+    if (newPosts.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          // Add only the new posts
+          _posts.addAll(newPosts);
+          _loadedPostIds.addAll(newPostIds);
+          _hasReachedMax = hasReachedMax || newPosts.length < servicePosts.length;
+          _isLoadingMore = false;
+          _isRefreshing = false;
+        });
       }
 
-      // Update state flags
-      _hasReachedMax = hasReachedMax || uniquePosts.isEmpty;
-      _isLoadingMore = false;
-      _hasError = false;
-
-      // Log summary for debugging
       DebugLogger.log(
-          'Added ${uniquePosts.length} new posts. Total: ${_servicePostsCategory.length}. HasReachedMax: $_hasReachedMax',
+          'Added ${newPosts.length} new posts. Total: ${_posts.length}. HasReachedMax: $_hasReachedMax',
           category: 'SERVICE_POST_SCREEN');
-    });
+    } else {
+      if (mounted) {
+        setState(() {
+          _hasReachedMax = true;
+          _isLoadingMore = false;
+          _isRefreshing = false;
+        });
+      }
+    }
   }
 
-  Future<bool> _onWillPopCategoryPost() async {
-    if (_scrollCategoryPostController.offset > 0) {
-      // Scroll to top smoothly
-      _scrollCategoryPostController.animateTo(
+  Future<bool> _onWillPop() async {
+    if (_scrollController.hasClients && _scrollController.offset > 0) {
+      _scrollController.animateTo(
         0.0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInToLinear,
       );
 
-      // Wait for 200 milliseconds before refreshing
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      // Trigger a refresh after reaching the top
-      _handleRefreshCategoryPost();
       return false;
-    } else {
-      return true;
     }
+    return true;
   }
 
   @override
   void dispose() {
     _loadStopwatch.stop();
-    _servicePostsCategory.clear();
-    _loadedPostIds.clear();
-    _scrollCategoryPostController.removeListener(_onScrollCategoryPost);
-    _scrollCategoryPostController.dispose();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    super.build(context);
 
     return WillPopScope(
-      onWillPop: _onWillPopCategoryPost,
+      onWillPop: _onWillPop,
       child: BlocListener<ServicePostBloc, ServicePostState>(
         listenWhen: (previous, current) {
-          // Only listen for success or failure events
-          return current is ServicePostLoadSuccess ||
-              current is ServicePostLoadFailure;
+          if (current is ServicePostLoadSuccess) {
+            return current.event.contains('GetServicePostsByCategoryEvent');
+          }
+          if (current is ServicePostLoadFailure) {
+            return current.event.contains('GetServicePostsByCategoryEvent');
+          }
+          return false;
         },
         bloc: widget.servicePostBloc,
         listener: (context, state) {
           if (state is ServicePostLoadSuccess) {
-            _handleCategoryPostLoadSuccess(
-                state.servicePosts, state.hasReachedMax);
+            _handleLoadSuccess(state.servicePosts, state.hasReachedMax);
           } else if (state is ServicePostLoadFailure) {
-            setState(() {
-              _hasError = true;
-              _errorMessage = state.errorMessage;
-              _isLoadingMore = false;
-            });
+            if (mounted) {
+              setState(() {
+                _hasError = true;
+                _errorMessage = state.errorMessage;
+                _isLoadingMore = false;
+                _isRefreshing = false;
+
+                // If first page failed but we have existing posts, keep them
+                if (_currentPage > 1 && _posts.isNotEmpty) {
+                  _hasReachedMax = true;
+                }
+              });
+            }
           }
         },
         child: _buildContent(),
@@ -270,102 +373,110 @@ class ServicePostScreenState extends State<ServicePostScreen>
   }
 
   Widget _buildContent() {
-    // If we have posts, show them
-    if (_servicePostsCategory.isNotEmpty) {
+    DebugLogger.log(
+        'Building content - Posts: ${_posts.length}, HasError: $_hasError, IsFirstLoad: $_isFirstLoad, IsLoadingMore: $_isLoadingMore',
+        category: 'SERVICE_POST_SCREEN');
+
+    if (_posts.isNotEmpty) {
       return _buildPostsList();
-    }
-    // If we have an error, show error state
-    else if (_hasError) {
+    } else if (_isFirstLoad) {
+      return const ServicePostScreenShimmer();
+    } else if (_hasError) {
       return _buildErrorState();
-    }
-    // Otherwise show loading state
-    else {
+    } else {
       return const ServicePostScreenShimmer();
     }
   }
 
   Widget _buildPostsList() {
     return RefreshIndicator(
-      onRefresh: _handleRefreshCategoryPost,
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollCategoryPostController,
-              itemCount: _hasReachedMax
-                  ? _servicePostsCategory.length
-                  : _servicePostsCategory.length + 1,
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemBuilder: (context, index) {
-                // Show loading indicator at the end if not at max
-                if (index >= _servicePostsCategory.length) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    child: Center(
-                      child: SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Theme.of(context).primaryColor,
-                        ),
-                      ),
-                    ),
-                  );
-                }
+      onRefresh: _handleRefresh,
+      child: ListView.builder(
+        controller: _scrollController,
+        itemCount: _hasReachedMax ? _posts.length : _posts.length + 1,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemBuilder: (context, index) {
+          // Loading indicator at the end
+          if (index >= _posts.length) {
+            return Visibility(
+              visible: _isLoadingMore,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+              ),
+            );
+          }
 
-                // Get the service post
-                final servicePost = _servicePostsCategory[index];
+          final post = _posts[index];
 
-                // Calculate fade-in delay based on index for staggered animation
-                final animationDelay =
-                    Duration(milliseconds: 50 * (index % 10));
+          // Only animate new items at the end (not the entire list)
+          final isNewlyLoadedItem = _isLoadingMore &&
+              index >= (_posts.length - 10) &&
+              _currentPage > 1;
 
-                // Use staggered animation for smoother loading
-                return FutureBuilder(
-                  future: Future.delayed(animationDelay),
-                  builder: (context, snapshot) {
-                    return AnimatedOpacity(
-                      opacity: snapshot.connectionState == ConnectionState.done
-                          ? 1.0
-                          : 0.0,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeIn,
-                      child: ServicePostCard(
-                        key: Key('servicePostCategory_${servicePost.id}'),
-                        onPostDeleted: onPostDeleted,
-                        servicePost: servicePost,
-                        canViewProfile: true,
-                        userProfileId: widget.userID,
-                        user: widget.user,
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+          if (isNewlyLoadedItem) {
+            final delay = index % 5 * 20;
+            return FadeTransition(
+              opacity: AlwaysStoppedAnimation(1.0), // No fade animation - prevents blinking
+              child: _buildPostCard(post),
+            );
+          }
+
+          // Regular posts without animation
+          return _buildPostCard(post);
+        },
       ),
     );
   }
 
-  Widget _buildErrorState() {
-    String errorMessage = _errorMessage;
-    if (errorMessage.contains('SocketException')) {
-      errorMessage = 'No internet connection';
-    }
+  Widget _buildPostCard(ServicePost post) {
+    return ServicePostCard(
+      key: ValueKey('post_${post.id}'),
+      onPostDeleted: onPostDeleted,
+      servicePost: post,
+      canViewProfile: true,
+      userProfileId: widget.userID,
+      user: widget.user,
+    );
+  }
 
-    return Center(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildErrorState() {
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          IconButton(
-            onPressed: _handleRefreshCategoryPost,
-            icon: const Icon(Icons.refresh),
+          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: _handleRefresh,
+                  icon: const Icon(Icons.refresh, size: 40),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _errorMessage.contains('SocketException')
+                      ? 'No internet connection. Pull down to refresh.'
+                      : 'Could not load posts. Pull down to refresh.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
           ),
-          Text('Some error occurred: $errorMessage'),
         ],
       ),
     );

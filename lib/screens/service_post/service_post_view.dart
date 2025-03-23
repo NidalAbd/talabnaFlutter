@@ -118,109 +118,70 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          // Main content
-          SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildPostHeader(),
-                _buildPostContent(),
-                _buildDivider(),
-                _buildInteractionRow(),
-                _buildDivider(),
-                _buildContactSection(),
-                if (widget.servicePost.categoriesId != 7 &&
-                    widget.servicePost.locationLatitudes != null &&
-                    widget.servicePost.locationLongitudes != null)
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: LocationButtonWidget(
-                      locationLatitudes: widget.servicePost.locationLatitudes!,
-                      locationLongitudes:
-                          widget.servicePost.locationLongitudes!,
-                      width: 15,
-                    ),
-                  ),
-                if (widget.servicePost.categoriesId != 7 &&
-                    widget.servicePost.locationLatitudes != null &&
-                    widget.servicePost.locationLongitudes != null)
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Card(
-                      elevation: 2,
-                      child: SizedBox(
-                          height: 200,
-                          child: GestureDetector(
-                            onTap: () {
-                              final url =
-                                  'https://www.google.com/maps/search/?api=1&query=${widget.servicePost.locationLatitudes},${widget.servicePost.locationLongitudes}';
-                              launchUrl(Uri.parse(url));
-                            },
-                            child: GoogleMap(
-                              initialCameraPosition: CameraPosition(
-                                target: LatLng(
-                                    widget.servicePost.locationLatitudes!,
-                                    widget.servicePost.locationLongitudes!),
-                                zoom: 15,
-                              ),
-                              markers: {
-                                Marker(
-                                  markerId: const MarkerId('user-location'),
-                                  position: LatLng(
-                                      widget.servicePost.locationLatitudes!,
-                                      widget.servicePost.locationLongitudes!),
-                                  infoWindow: InfoWindow(
-                                      title: language.getUserLocationText()),
-                                ),
-                              },
-                            ),
-                          )),
-                    ),
-                  ),
-              ],
+      backgroundColor: isDarkMode ? Colors.black : Colors.grey[50],
+      appBar: _buildAppBar(colorScheme),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPostHeader(colorScheme),
+            _buildPostContent(colorScheme),
+            Divider(
+              color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+              thickness: 0.5,
+              height: 1,
             ),
-          ),
-        ],
+            _buildInteractionRow(colorScheme),
+            Divider(
+              color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+              thickness: 0.5,
+              height: 1,
+            ),
+            _buildContactSection(colorScheme),
+            if (widget.servicePost.categoriesId != 7 &&
+                widget.servicePost.locationLatitudes != null &&
+                widget.servicePost.locationLongitudes != null)
+              _buildLocationSection(colorScheme),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDivider() {
+  AppBar _buildAppBar(ColorScheme colorScheme) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    return Divider(
-      color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
-      thickness: 0.5,
-      height: 32,
-    );
-  }
 
-  AppBar _buildAppBar() {
     return AppBar(
+      elevation: 0,
+      backgroundColor: isDarkMode ? Colors.black : Colors.white,
+      scrolledUnderElevation: 1,
+      centerTitle: false,
       title: Row(
         children: [
           Expanded(
             child: AutoDirectionText(
               text: widget.servicePost.title ?? '',
-              style: const TextStyle(
-                fontSize: 18,
+              style: TextStyle(
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
           if (widget.servicePost.haveBadge != 'عادي')
-            PremiumBadge(
-              badgeType: widget.servicePost.haveBadge ?? 'عادي',
-              size: 22,
-              userID: widget.userProfileId,
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0),
+              child: PremiumBadge(
+                badgeType: widget.servicePost.haveBadge ?? 'عادي',
+                size: 18,
+                userID: widget.userProfileId,
+              ),
             ),
         ],
       ),
@@ -238,44 +199,104 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
     );
   }
 
-  Widget _buildPostHeader() {
+  bool isArabicText(String text) {
+    if (text.isEmpty) return false;
+
+    // Check the first few non-whitespace characters
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return false;
+
+    // Arabic Unicode block ranges from 0x0600 to 0x06FF
+    final firstChar = trimmed.codeUnitAt(0);
+    return firstChar >= 0x0600 && firstChar <= 0x06FF;
+  }
+
+  Widget _buildPostHeader(ColorScheme colorScheme) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      color: isDarkMode ? Colors.grey.shade900 : Colors.white,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          UserAvatar(
-            imageUrl: ProfileImageHelper.getProfileImageUrl(
-              widget.servicePost.userPhoto,
+          Hero(
+            tag: 'avatar_${widget.servicePost.userId}',
+            child: UserAvatar(
+              imageUrl: ProfileImageHelper.getProfileImageUrl(
+                widget.servicePost.userPhoto,
+              ),
+              radius: 18,
+              fromUser: widget.userProfileId,
+              toUser: widget.servicePost.userId!,
+              canViewProfile: widget.canViewProfile,
+              user: widget.user,
             ),
-            radius: 20,
-            fromUser: widget.userProfileId,
-            toUser: widget.servicePost.userId!,
-            canViewProfile: widget.canViewProfile,
-            user: widget.user,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AutoDirectionText(
-                  text: widget.servicePost.userName ??
-                      language.getUnknownUserText(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: AutoDirectionText(
+                        text: widget.servicePost.userName ??
+                            language.getUnknownUserText(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  formatTimeDifference(widget.servicePost.createdAt),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.access_time,
+                      size: 12,
+                      color: colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      formatTimeDifference(widget.servicePost.createdAt),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                    if (widget.servicePost.distance != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 2,
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.location_on,
+                        size: 12,
+                        color: colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        "${widget.servicePost.distance!.clamp(0, 999).toInt()} km",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -285,24 +306,53 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
     );
   }
 
-  Widget _buildPostContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.servicePost.description != null &&
-            widget.servicePost.description!.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: AutoDirectionText(
-              text: widget.servicePost.description ?? '',
-              style: const TextStyle(fontSize: 16),
+  Widget _buildPostContent(ColorScheme colorScheme) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final accent = Theme.of(context).primaryColor;
+
+    // Detect if description is primarily Arabic
+    final isDescriptionArabic = widget.servicePost.description != null &&
+        widget.servicePost.description!.isNotEmpty &&
+        isArabicText(widget.servicePost.description!);
+
+    // Detect if title is primarily Arabic
+    final isTitleArabic = widget.servicePost.title != null &&
+        widget.servicePost.title!.isNotEmpty &&
+        isArabicText(widget.servicePost.title!);
+
+    return Container(
+      color: isDarkMode ? Colors.grey.shade900 : Colors.white,
+      child: Column(
+        crossAxisAlignment: isDescriptionArabic
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          if (widget.servicePost.description != null &&
+              widget.servicePost.description!.isNotEmpty)
+            Directionality(
+              textDirection:
+                  isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Text(
+                  widget.servicePost.description ?? '',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: colorScheme.onSurface,
+                    height: 1.3,
+                  ),
+                  textAlign:
+                      isDescriptionArabic ? TextAlign.right : TextAlign.left,
+                ),
+              ),
             ),
-          ),
-        if (widget.servicePost.photos != null &&
-            widget.servicePost.photos!.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Hero(
+            padding: const EdgeInsets.only(top: 8),
+            child: _buildTagsRow(isDarkMode, isDescriptionArabic),
+          ),
+          if (widget.servicePost.photos != null &&
+              widget.servicePost.photos!.isNotEmpty)
+            Hero(
               tag: 'photo_${widget.servicePost.id}',
               child: ImageGrid(
                 imageUrls: widget.servicePost.photos!
@@ -310,241 +360,364 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
                     .toList(),
               ),
             ),
-          ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
-            children: [
-              _buildStatItem(
-                icon: Icons.favorite,
-                count: widget.servicePost.favoritesCount.toString(),
-                label: language.getLikesLabel(),
-              ),
-              const SizedBox(width: 16),
-              _buildStatItem(
-                icon: Icons.comment,
-                count: widget.servicePost.commentsCount.toString(),
-                label: language.getCommentsLabel(),
-              ),
-              Expanded(child: Container()),
-              _buildStatItem(
-                icon: Icons.remove_red_eye_outlined,
-                count: widget.servicePost.viewCount.toString(),
-                label: language.getViewsLabel(),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildInteractionRow() {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+  String formatNumber(int number) {
+    if (number >= 1000000000) {
+      final double formattedNumber = number / 1000000000;
+      const String suffix = 'B';
+      return '${formattedNumber.toStringAsFixed(1)}$suffix';
+    } else if (number >= 1000000) {
+      final double formattedNumber = number / 1000000;
+      const String suffix = 'M';
+      return '${formattedNumber.toStringAsFixed(1)}$suffix';
+    } else if (number >= 1000) {
+      final double formattedNumber = number / 1000;
+      const String suffix = 'K';
+      return '${formattedNumber.toStringAsFixed(1)}$suffix';
+    } else {
+      return number.toString();
+    }
+  }
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              Expanded(
-                child: _buildShareButton(),
-              ),
-              _buildVerticalDivider(isDarkMode),
-              Expanded(
-                child: _buildReportButton(),
-              ),
-              _buildVerticalDivider(isDarkMode),
-              Expanded(
-                child: _buildLikeButton(widget.servicePost),
-              ),
-              _buildVerticalDivider(isDarkMode),
-              Expanded(
-                child: _buildCommentButton(widget.servicePost),
-              ),
+  Widget _buildTagsRow(bool isDarkMode, bool isDescriptionArabic) {
+    // Get the appropriate language based on app settings
+    final isArabic = language.getLanguage() == 'ar';
+
+    // Text style for tags
+    final tagTextStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700,
+    );
+
+    // Container style for tags
+    final tagDecoration = BoxDecoration(
+      color: isDarkMode
+          ? Colors.grey.shade800.withOpacity(0.3)
+          : Colors.grey.shade100,
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(
+        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+        width: 0.5,
+      ),
+    );
+
+    // Build a list of available tags
+    List<Widget> tags = [];
+
+    // Subcategory
+    if (widget.servicePost.subCategory != null) {
+      final subcategoryName =
+          widget.servicePost.subCategory!.name[isArabic ? 'ar' : 'en'] ??
+              widget.servicePost.subCategory!.name['en'] ??
+              'Unknown';
+
+      tags.add(_buildTag(
+        label: subcategoryName,
+        decoration: tagDecoration,
+        style: tagTextStyle,
+      ));
+    }
+    if (widget.servicePost.type != null &&
+        widget.servicePost.type!.isNotEmpty) {
+      final String typeText = isArabic
+          ? (widget.servicePost.type == 'طلب' ? 'طلب' : 'عرض')
+          : (widget.servicePost.type == 'طلب' ? 'Request' : 'Offer');
+
+      tags.add(_buildTag(
+        label: typeText,
+        decoration: tagDecoration,
+        style: tagTextStyle,
+      ));
+    }
+    if (widget.servicePost.price != null) {
+      tags.add(_buildTag(
+        label:
+            "${widget.servicePost.price} ${widget.servicePost.priceCurrencyCode}",
+        decoration: tagDecoration,
+        style: tagTextStyle,
+      ));
+    }
+    // Return a horizontal scrollable row of tags
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          textDirection:
+              isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+          children: [
+            for (int i = 0; i < tags.length; i++) ...[
+              tags[i],
+              if (i < tags.length - 1) const SizedBox(width: 8),
             ],
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildVerticalDivider(bool isDarkMode) {
+// Helper method to build an individual tag
+  Widget _buildTag({
+    required String label,
+    required BoxDecoration decoration,
+    required TextStyle style,
+  }) {
     return Container(
-      height: 24,
-      width: 1,
-      color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade300,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: decoration,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: style,
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStatItem({
+  Widget _buildInteractionRow(ColorScheme colorScheme) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDarkMode ? Colors.grey[300] : Colors.grey[700];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // VIEWS with count
+          _buildCountButton(
+            icon: Icons.remove_red_eye_outlined,
+            count: formatNumber(widget.servicePost.viewCount ?? 0),
+            color: textColor,
+            onTap: () {}, // Views are typically not interactive
+          ),
+
+          CommentModalBottomSheet(
+            iconSize: 22,
+            userProfileBloc: _userCurrentProfileBloc,
+            commentBloc: _commentBloc,
+            servicePost: widget.servicePost,
+            user: widget.user,
+          ),
+
+          // LIKES with count
+          LikeButton(
+            showCountOnRight: true,
+            isFavorite: widget.servicePost.isFavorited ?? false,
+            favoritesCount: widget.servicePost.favoritesCount ?? 0,
+            onToggleFavorite: () async {
+              final completer = Completer<bool>();
+
+              // Create a stream subscription to listen for the result
+              StreamSubscription? subscription;
+              subscription = _servicePostBloc.stream.listen((state) {
+                if (state is ServicePostFavoriteToggled &&
+                    state.servicePostId == widget.servicePost.id) {
+                  completer.complete(state.isFavorite);
+                  subscription?.cancel();
+                } else if (state is ServicePostOperationFailure &&
+                    state.event == 'ToggleFavoriteServicePostEvent') {
+                  completer.complete(false);
+                  subscription?.cancel();
+                }
+              });
+
+              // Dispatch the toggle event
+              _servicePostBloc.add(ToggleFavoriteServicePostEvent(
+                  servicePostId: widget.servicePost.id!));
+
+              return completer.future;
+            },
+          ),
+
+          // SHARE (icon only)
+          _buildIconButton(
+            icon: Icons.share_outlined,
+            color: textColor,
+            onTap: _shareServicePost,
+          ),
+
+          // REPORT (icon only)
+          _buildIconButton(
+            icon: Icons.flag_outlined,
+            color: textColor,
+            onTap: () {
+              // Report functionality
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCountButton({
     required IconData icon,
     required String count,
-    required String label,
+    required Color? color,
+    required VoidCallback onTap,
   }) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: Colors.grey.shade600),
-        const SizedBox(width: 4),
-        Text(
-          count + label,
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 12,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: color,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                count,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: color,
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildLikeButton(ServicePost post) {
-    return Column(
-      children: [
-        LikeButton(
-          showCountOnRight: widget.showTextOnRight,
-          iconSize: widget.interactionIconSize,
-          isFavorite: post.isFavorited ?? false,
-          favoritesCount: post.favoritesCount ?? 0,
-          onToggleFavorite: () async {
-            final completer = Completer<bool>();
-
-            // Create a stream subscription to listen for the result
-            StreamSubscription? subscription;
-            subscription = _servicePostBloc.stream.listen((state) {
-              if (state is ServicePostFavoriteToggled &&
-                  state.servicePostId == post.id) {
-                completer.complete(state.isFavorite);
-                subscription?.cancel();
-              } else if (state is ServicePostOperationFailure &&
-                  state.event == 'ToggleFavoriteServicePostEvent') {
-                completer.complete(false);
-                subscription?.cancel();
-              }
-            });
-
-            // Dispatch the toggle event
-            _servicePostBloc
-                .add(ToggleFavoriteServicePostEvent(servicePostId: post.id!));
-
-            return completer.future;
-          },
+  Widget _buildIconButton({
+    required IconData icon,
+    required Color? color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          child: Icon(
+            icon,
+            size: 20,
+            color: color,
+          ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildCommentButton(ServicePost post) {
-    return Column(
-      children: [
-        CommentModalBottomSheet(
-          showCountOnRight: widget.showTextOnRight,
-          iconSize: widget.interactionIconSize,
-          userProfileBloc: _userCurrentProfileBloc,
-          commentBloc: _commentBloc,
-          servicePost: post,
-          user: widget.user,
-        ),
-      ],
-    );
-  }
+  Widget _buildContactSection(ColorScheme colorScheme) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-  Widget _buildShareButton() {
-    final iconSize = widget.interactionIconSize;
-
-    return InkWell(
-      onTap: _shareServicePost,
-      child: widget.showTextOnRight
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.share_outlined, size: iconSize),
-                  const SizedBox(width: 6),
-                  Text(
-                    language.getShareText(),
-                    style: TextStyle(
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : Column(
-              children: [
-                Icon(Icons.share_outlined, size: iconSize),
-                const SizedBox(height: 4),
-                Text(
-                  language.getShareText(),
-                  style: TextStyle(
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildReportButton() {
-    final iconSize = widget.interactionIconSize;
-
-    return InkWell(
-      onTap: () {
-        // Report functionality
-      },
-      child: widget.showTextOnRight
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.flag_outlined, size: iconSize),
-                  const SizedBox(width: 6),
-                  Text(
-                    language.getReportText(),
-                    style: TextStyle(
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : Column(
-              children: [
-                Icon(Icons.flag_outlined, size: iconSize),
-                const SizedBox(height: 4),
-                Text(
-                  language.getReportText(),
-                  style: TextStyle(
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildContactSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      color: isDarkMode ? Colors.grey.shade900 : Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            language.contactDetails(),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Icon(
+                Icons.contact_phone,
+                size: 16,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                language.contactDetails(),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           UserContactButtons(
             key: Key('UserContactButtons_${widget.servicePost.id}'),
             userId: widget.servicePost.userId!,
             servicePostBloc: _servicePostBloc,
             userContactBloc: _userContactBloc,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationSection(ColorScheme colorScheme) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      color: isDarkMode ? Colors.grey.shade900 : Colors.white,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.location_on,
+                  size: 16,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  language.getUserLocationText(),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: LocationButtonWidget(
+              locationLatitudes: widget.servicePost.locationLatitudes!,
+              locationLongitudes: widget.servicePost.locationLongitudes!,
+              width: 15,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 180,
+            child: GestureDetector(
+              onTap: () {
+                final url =
+                    'https://www.google.com/maps/search/?api=1&query=${widget.servicePost.locationLatitudes},${widget.servicePost.locationLongitudes}';
+                launchUrl(Uri.parse(url));
+              },
+              child: GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(widget.servicePost.locationLatitudes!,
+                      widget.servicePost.locationLongitudes!),
+                  zoom: 15,
+                ),
+                markers: {
+                  Marker(
+                    markerId: const MarkerId('user-location'),
+                    position: LatLng(widget.servicePost.locationLatitudes!,
+                        widget.servicePost.locationLongitudes!),
+                    infoWindow:
+                        InfoWindow(title: language.getUserLocationText()),
+                  ),
+                },
+              ),
+            ),
           ),
         ],
       ),

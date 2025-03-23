@@ -9,7 +9,11 @@ import 'package:talabna/screens/profile/change_password_screen.dart';
 
 import '../../blocs/authentication/authentication_bloc.dart';
 import '../../blocs/authentication/authentication_event.dart';
+import '../../blocs/service_post/service_post_bloc.dart';
+import '../../blocs/service_post/service_post_event.dart';
+import '../../core/service_post_data_saver_handler.dart';
 import '../../provider/language_theme_selector.dart';
+import '../../utils/data_saver_synchronizer.dart';
 import 'about_screen.dart';
 import 'app_data_clear_service.dart';
 import 'help_center_screen.dart';
@@ -33,6 +37,7 @@ class _SettingScreenState extends State<SettingScreen>
   late Animation<double> _fadeInAnimation;
   bool _dataSaverEnabled = false;
   final _appDataClearService = AppDataClearService();
+  late  GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -51,9 +56,13 @@ class _SettingScreenState extends State<SettingScreen>
       ),
     );
 
-    // Initialize notification settings asynchronously
+    // Initialize settings asynchronously
     _initializeSettings();
+
+    // Create a scaffold key if it doesn't exist
+    _scaffoldKey = GlobalKey<ScaffoldState>();
   }
+
 
   @override
   void dispose() {
@@ -64,11 +73,15 @@ class _SettingScreenState extends State<SettingScreen>
   Future<void> _initializeSettings() async {
     try {
       // Get notification setting
-      final notificationStatus =
-          await NotificationService.getNotificationStatus();
+      final notificationStatus = await NotificationService.getNotificationStatus();
 
-      // Get data saver setting
+      // Get data saver setting from DataSaverService
       final dataSaverStatus = await DataSaverService.getDataSaverStatus();
+
+      // Initialize the ServicePostBloc with current data saver status
+      if (context.mounted) {
+        ServicePostDataSaverHandler.initializeBloc(context);
+      }
 
       if (mounted) {
         setState(() {
@@ -111,40 +124,57 @@ class _SettingScreenState extends State<SettingScreen>
     );
   }
 
+// Modify the _toggleDataSaver method in your SettingScreen class
   Future<void> _toggleDataSaver() async {
     try {
-      // Toggle data saver status
+      // Toggle data saver status and wait for the result
       final newStatus = await DataSaverService.toggleDataSaver();
 
+      // Update UI state
       setState(() {
         _dataSaverEnabled = newStatus;
       });
 
+      // Notify the ServicePostBloc
+      if (context.mounted) {
+        context.read<ServicePostBloc>().add(DataSaverToggleEvent(enabled: newStatus));
+      }
+
+      // Clear ServicePostBloc caches to force reload with new setting
+      if (context.mounted) {
+        context.read<ServicePostBloc>().add(const ClearServicePostCacheEvent());
+      }
+
       // Show a snackbar to provide feedback
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(newStatus
-              ? _language.getLanguage() == 'ar'
-                  ? 'تم تفعيل وضع توفير البيانات'
-                  : 'Data Saver Mode Enabled'
-              : _language.getLanguage() == 'ar'
-                  ? 'تم تعطيل وضع توفير البيانات'
-                  : 'Data Saver Mode Disabled'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newStatus
+                ? _language.getLanguage() == 'ar'
+                ? 'تم تفعيل وضع توفير البيانات'
+                : 'Data Saver Mode Enabled'
+                : _language.getLanguage() == 'ar'
+                ? 'تم تعطيل وضع توفير البيانات'
+                : 'Data Saver Mode Disabled'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       // Handle any errors that might occur
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_language.getLanguage() == 'ar'
-              ? 'خطأ في تحديث وضع توفير البيانات: $e'
-              : 'Error updating data saver mode: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_language.getLanguage() == 'ar'
+                ? 'خطأ في تحديث وضع توفير البيانات: $e'
+                : 'Error updating data saver mode: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
+
 
   Future<void> _toggleNotifications() async {
     try {
@@ -550,11 +580,58 @@ class _SettingScreenState extends State<SettingScreen>
                   title: _language.getLanguage() == 'ar'
                       ? 'وضع توفير البيانات'
                       : 'Data Saver Mode',
-                  onTap: () => _toggleDataSaver(),
+                  onTap: () {}, // Empty since the Switch handles it
                   trailing: Switch(
                     value: _dataSaverEnabled,
-                    onChanged: (value) {
-                      _toggleDataSaver();
+                    onChanged: (value) async {
+                      try {
+                        // Use the value from the switch directly instead of toggling
+                        print('Switch changed to: $value');
+
+                        // Update state immediately for responsive UI
+                        setState(() {
+                          _dataSaverEnabled = value;
+                        });
+
+                        // Set the value directly instead of toggling
+                        await DataSaverService.setDataSaverStatus(value);
+
+                        // Notify blocs
+                        if (context.mounted) {
+                          context.read<ServicePostBloc>().add(DataSaverToggleEvent(enabled: value));
+                          context.read<ServicePostBloc>().add(const ClearServicePostCacheEvent());
+                        }
+
+                        // Feedback
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(value
+                                  ? _language.getLanguage() == 'ar'
+                                  ? 'تم تفعيل وضع توفير البيانات'
+                                  : 'Data Saver Mode Enabled'
+                                  : _language.getLanguage() == 'ar'
+                                  ? 'تم تعطيل وضع توفير البيانات'
+                                  : 'Data Saver Mode Disabled'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        // Revert UI on error
+                        setState(() {
+                          _dataSaverEnabled = !value;
+                        });
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error updating data saver mode: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
                     },
                     activeColor: primaryColor,
                   ),

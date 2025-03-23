@@ -27,26 +27,41 @@ class ServicePostLoadSuccess extends ServicePostState {
   final List<ServicePost> servicePosts;
   final bool hasReachedMax;
   final String event;
+  final bool? preloadOnly; // Added to support preloading
+  final bool? dataSaverEnabled;
 
   const ServicePostLoadSuccess({
     required this.servicePosts,
     required this.hasReachedMax,
     required this.event,
+    this.preloadOnly = false, // Default to false
+    this.dataSaverEnabled,
   });
 
   ServicePostLoadSuccess copyWith({
     List<ServicePost>? servicePosts,
     bool? hasReachedMax,
+    String? event,
+    bool? preloadOnly,
+    bool? dataSaverEnabled,
   }) {
     return ServicePostLoadSuccess(
       servicePosts: servicePosts ?? this.servicePosts,
       hasReachedMax: hasReachedMax ?? this.hasReachedMax,
-      event: this.event,
+      event: event ?? this.event,
+      preloadOnly: preloadOnly ?? this.preloadOnly,
+      dataSaverEnabled: dataSaverEnabled ?? this.dataSaverEnabled,
     );
   }
 
   @override
-  List<Object> get props => [servicePosts, hasReachedMax, event];
+  List<Object> get props => [
+    servicePosts,
+    hasReachedMax,
+    event,
+    preloadOnly ?? false,
+    dataSaverEnabled ?? false,
+  ];
 }
 
 class ServicePostFormLoadSuccess extends ServicePostState {

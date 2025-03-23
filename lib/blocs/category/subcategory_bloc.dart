@@ -24,6 +24,10 @@ class SubcategoryBloc extends Bloc<SubcategoryEvent, SubcategoryState> {
 
   // Flag to indicate if categories fetch is in progress
   bool _isFetchingCategories = false;
+  static final Map<int, List<SubCategoryMenu>> _globalSubcategoryCache = {};
+  static final Map<int, DateTime> _lastRefreshTimes = {};
+  static const Duration _refreshThrottleTime = Duration(seconds: 10);
+
 
   SubcategoryBloc({
     required this.categoriesRepository,
@@ -33,67 +37,150 @@ class SubcategoryBloc extends Bloc<SubcategoryEvent, SubcategoryState> {
 
     on<FetchSubcategories>((event, emit) async {
       // First, check if we need to force refresh (skip memory cache)
-      if (!event.forceRefresh) {
-        // Check if we already have this category in memory cache
-        if (_subcategoryCache.containsKey(event.categoryId)) {
+      if (event.forceRefresh) {
+        _lastRefreshTimes[event.categoryId] = DateTime.now();
+
+        DebugLogger.log(
+            'Force refreshing subcategories for category ${event.categoryId}',
+            category: 'SUBCATEGORY_BLOC');
+
+        // Show loading state if requested
+        if (event.showLoadingState) {
+          emit(SubcategoryLoading());
+        }
+
+        try {
+          // Fetch from API directly
+          final stopwatch = Stopwatch()..start();
+          final apiItems = await categoriesRepository.getSubCategoriesMenu(
+            event.categoryId,
+            forceRefresh: true,
+          );
+          stopwatch.stop();
+
+          // Update both memory caches - local and global
+          _subcategoryCache[event.categoryId] = apiItems;
+          _globalSubcategoryCache[event.categoryId] = apiItems;
+
+          // Store in local storage
+          await localDataSource.cacheSubCategoriesMenu(event.categoryId, apiItems);
+
+          // Emit loaded state
+          emit(SubcategoryLoaded(apiItems));
+
           DebugLogger.log(
-              'Using memory-cached subcategories for category ${event.categoryId}',
+              'Fetched ${apiItems.length} subcategories from API in ${stopwatch.elapsedMilliseconds}ms',
+              category: 'SUBCATEGORY_BLOC'
+          );
+        } catch (e) {
+          // Handle error
+          DebugLogger.log('Error fetching subcategories: $e',
               category: 'SUBCATEGORY_BLOC');
 
-          // Emit brief loading state if requested (for UI consistency)
-          if (event.showLoadingState) {
-            emit(SubcategoryLoading());
-            await Future.delayed(const Duration(milliseconds: 200));
+          // If we have cached data, use it despite the error
+          if (_globalSubcategoryCache.containsKey(event.categoryId)) {
+            emit(SubcategoryLoaded(_globalSubcategoryCache[event.categoryId]!));
+          } else if (_subcategoryCache.containsKey(event.categoryId)) {
+            emit(SubcategoryLoaded(_subcategoryCache[event.categoryId]!));
+          } else {
+            emit(SubcategoryError(e.toString()));
           }
-
-          emit(SubcategoryLoaded(_subcategoryCache[event.categoryId]!));
-          return;
         }
+
+        return;
+      }
+
+      // If not forcing refresh, first check global cache (which persists between navigations)
+      if (_globalSubcategoryCache.containsKey(event.categoryId)) {
+        DebugLogger.log(
+            'Using global-cached subcategories for category ${event.categoryId}',
+            category: 'SUBCATEGORY_BLOC');
+
+        // Emit brief loading state if requested (for UI consistency)
+        if (event.showLoadingState) {
+          emit(SubcategoryLoading());
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+
+        // Sync local cache with global
+        _subcategoryCache[event.categoryId] = _globalSubcategoryCache[event.categoryId]!;
+
+        emit(SubcategoryLoaded(_globalSubcategoryCache[event.categoryId]!));
+
+        // If not forcing refresh, still update in background
+        if (!_pendingCategories.contains(event.categoryId)) {
+          _fetchAndUpdateSubcategories(event.categoryId, emit, false);
+        }
+
+        return;
+      }
+
+      // Then check local memory cache
+      if (_subcategoryCache.containsKey(event.categoryId)) {
+        DebugLogger.log(
+            'Using memory-cached subcategories for category ${event.categoryId}',
+            category: 'SUBCATEGORY_BLOC');
+
+        // Emit brief loading state if requested (for UI consistency)
+        if (event.showLoadingState) {
+          emit(SubcategoryLoading());
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+
+        // Sync global cache with local
+        _globalSubcategoryCache[event.categoryId] = _subcategoryCache[event.categoryId]!;
+
+        emit(SubcategoryLoaded(_subcategoryCache[event.categoryId]!));
+
+        // If not forcing refresh, still update in background
+        if (!_pendingCategories.contains(event.categoryId)) {
+          _fetchAndUpdateSubcategories(event.categoryId, emit, false);
+        }
+
+        return;
       }
 
       // Not in memory cache or forcing refresh, check permanent storage
-      if (!event.forceRefresh) {
-        try {
-          // Check if we have valid cache in local storage
-          if (localDataSource
-              .isCacheValid('cached_subcategory_menu_${event.categoryId}')) {
-            final cachedSubcategories =
-                await localDataSource.getSubCategoriesMenu(event.categoryId);
+      try {
+        // Check if we have valid cache in local storage
+        if (localDataSource
+            .isCacheValid('cached_subcategory_menu_${event.categoryId}')) {
+          final cachedSubcategories =
+          await localDataSource.getSubCategoriesMenu(event.categoryId);
 
-            if (cachedSubcategories.isNotEmpty) {
-              DebugLogger.log(
-                  'Using storage-cached subcategories for category ${event.categoryId}',
-                  category: 'SUBCATEGORY_BLOC');
-
-              // Update memory cache
-              _subcategoryCache[event.categoryId] = cachedSubcategories;
-
-              // Emit brief loading state if requested (for UI consistency)
-              if (event.showLoadingState) {
-                emit(SubcategoryLoading());
-                await Future.delayed(const Duration(milliseconds: 50));
-              }
-
-              emit(SubcategoryLoaded(cachedSubcategories));
-
-              // If we're not already fetching, get fresh data in background
-              if (!_pendingCategories.contains(event.categoryId) &&
-                  !event.forceRefresh) {
-                _fetchAndUpdateSubcategories(event.categoryId, emit, false);
-              }
-
-              return;
-            }
-          } else {
+          if (cachedSubcategories.isNotEmpty) {
             DebugLogger.log(
-                'No valid cache for subcategories category ${event.categoryId}',
+                'Using storage-cached subcategories for category ${event.categoryId}',
                 category: 'SUBCATEGORY_BLOC');
+
+            // Update both memory caches
+            _subcategoryCache[event.categoryId] = cachedSubcategories;
+            _globalSubcategoryCache[event.categoryId] = cachedSubcategories;
+
+            // Emit brief loading state if requested (for UI consistency)
+            if (event.showLoadingState) {
+              emit(SubcategoryLoading());
+              await Future.delayed(const Duration(milliseconds: 50));
+            }
+
+            emit(SubcategoryLoaded(cachedSubcategories));
+
+            // If we're not already fetching, get fresh data in background
+            if (!_pendingCategories.contains(event.categoryId)) {
+              _fetchAndUpdateSubcategories(event.categoryId, emit, false);
+            }
+
+            return;
           }
-        } catch (e) {
-          // Error reading from local storage, we'll continue to fetch from API
-          DebugLogger.log('Error reading subcategories from local storage: $e',
+        } else {
+          DebugLogger.log(
+              'No valid cache for subcategories category ${event.categoryId}',
               category: 'SUBCATEGORY_BLOC');
         }
+      } catch (e) {
+        // Error reading from local storage, we'll continue to fetch from API
+        DebugLogger.log('Error reading subcategories from local storage: $e',
+            category: 'SUBCATEGORY_BLOC');
       }
 
       // Check if we're already fetching this category
@@ -109,9 +196,10 @@ class SubcategoryBloc extends Bloc<SubcategoryEvent, SubcategoryState> {
         emit(SubcategoryLoading());
       }
 
-      await _fetchAndUpdateSubcategories(
-          event.categoryId, emit, event.showLoadingState);
+      // Fetch and update subcategories
+      await _fetchAndUpdateSubcategories(event.categoryId, emit, true);
     });
+
 
     on<InitializeSubcategoryCache>((event, emit) async {
       try {
@@ -304,75 +392,155 @@ class SubcategoryBloc extends Bloc<SubcategoryEvent, SubcategoryState> {
     });
   }
 
-  // Helper method to fetch subcategories from API and update caches
   Future<void> _fetchAndUpdateSubcategories(
-      int categoryId, Emitter<SubcategoryState> emit, bool emitState) async {
+      int categoryId, Emitter<SubcategoryState> emit, bool emitState,
+      {bool forceRefresh = false}) async {
     _pendingCategories.add(categoryId);
 
     try {
-      // Check if we have cached data first
-      List<SubCategoryMenu>? cachedItems;
-      try {
-        if (localDataSource
-            .isCacheValid('cached_subcategory_menu_$categoryId')) {
-          cachedItems = await localDataSource.getSubCategoriesMenu(categoryId);
+      // Fetch from API if forcing refresh
+      if (forceRefresh) {
+        DebugLogger.log(
+            'Fetching subcategories from API for category $categoryId (forceRefresh)',
+            category: 'SUBCATEGORY_BLOC');
 
-          // If we have cached data and should emit state
-          if (cachedItems.isNotEmpty && emitState) {
-            _subcategoryCache[categoryId] = cachedItems;
-            emit(SubcategoryLoaded(cachedItems));
+        final stopwatch = Stopwatch()..start();
+        final List<SubCategoryMenu> apiItems =
+        await categoriesRepository.getSubCategoriesMenu(categoryId, forceRefresh: true);
+        stopwatch.stop();
 
-            // Log that we're using cached data
-            DebugLogger.log(
-                'Using cached data for category $categoryId with ${cachedItems.length} subcategories',
+        DebugLogger.log(
+            'Fetched ${apiItems.length} subcategories from API in ${stopwatch.elapsedMilliseconds}ms',
+            category: 'SUBCATEGORY_BLOC');
+
+        // Update memory caches with new data
+        _subcategoryCache[categoryId] = apiItems;
+        _globalSubcategoryCache[categoryId] = apiItems;
+
+        // Emit loaded state if needed
+        if (emitState) {
+          emit(SubcategoryLoaded(apiItems));
+        }
+      } else {
+        // If not forcing refresh, try cache first
+        if (_globalSubcategoryCache.containsKey(categoryId)) {
+          DebugLogger.log(
+              'Using global-cached subcategories for category $categoryId',
+              category: 'SUBCATEGORY_BLOC');
+
+          // Sync local cache with global
+          _subcategoryCache[categoryId] = _globalSubcategoryCache[categoryId]!;
+
+          if (emitState) {
+            emit(SubcategoryLoaded(_globalSubcategoryCache[categoryId]!));
+          }
+        } else if (_subcategoryCache.containsKey(categoryId)) {
+          DebugLogger.log(
+              'Using memory-cached subcategories for category $categoryId',
+              category: 'SUBCATEGORY_BLOC');
+
+          // Sync global cache with local
+          _globalSubcategoryCache[categoryId] = _subcategoryCache[categoryId]!;
+
+          if (emitState) {
+            emit(SubcategoryLoaded(_subcategoryCache[categoryId]!));
+          }
+        } else {
+          // Nothing in memory, try storage or API
+          try {
+            final cachedItems = await localDataSource.getSubCategoriesMenu(categoryId);
+
+            if (cachedItems.isNotEmpty) {
+              // Update both memory caches
+              _subcategoryCache[categoryId] = cachedItems;
+              _globalSubcategoryCache[categoryId] = cachedItems;
+
+              if (emitState) {
+                emit(SubcategoryLoaded(cachedItems));
+              }
+            } else {
+              // No cache, fetch from API
+              final apiItems = await categoriesRepository.getSubCategoriesMenu(categoryId);
+
+              // Update both memory caches
+              _subcategoryCache[categoryId] = apiItems;
+              _globalSubcategoryCache[categoryId] = apiItems;
+
+              if (emitState) {
+                emit(SubcategoryLoaded(apiItems));
+              }
+            }
+          } catch (e) {
+            // Error handling
+            DebugLogger.log('Error fetching subcategories: $e',
                 category: 'SUBCATEGORY_BLOC');
+
+            if (emitState) {
+              emit(SubcategoryError(e.toString()));
+            }
           }
         }
-      } catch (e) {
-        DebugLogger.log('Error reading from cache: $e',
-            category: 'SUBCATEGORY_BLOC');
-      }
-
-      // Fetch new data from API
-      DebugLogger.log(
-          'Fetching subcategories from API for category $categoryId',
-          category: 'SUBCATEGORY_BLOC');
-
-      final stopwatch = Stopwatch()..start();
-      final List<SubCategoryMenu> apiItems =
-          await categoriesRepository.getSubCategoriesMenu(categoryId);
-      stopwatch.stop();
-
-      DebugLogger.log(
-          'Fetched ${apiItems.length} subcategories from API in ${stopwatch.elapsedMilliseconds}ms',
-          category: 'SUBCATEGORY_BLOC');
-
-      // Store the API items in memory cache
-      _subcategoryCache[categoryId] = apiItems;
-
-      // Store in local storage (the cacheSubCategoriesMenu method will handle merging counts)
-      await localDataSource.cacheSubCategoriesMenu(categoryId, apiItems);
-
-      // Emit the API items if needed and we haven't already emitted from cache
-      if (emitState && (cachedItems == null || cachedItems.isEmpty)) {
-        emit(SubcategoryLoaded(apiItems));
       }
     } catch (e) {
       DebugLogger.log('Error in _fetchAndUpdateSubcategories: $e',
           category: 'SUBCATEGORY_BLOC');
 
-      // If we have cached data, use it despite the error
-      if (_subcategoryCache.containsKey(categoryId) && emitState) {
-        emit(SubcategoryLoaded(_subcategoryCache[categoryId]!));
-
-        DebugLogger.log('Using cached data after API error',
-            category: 'SUBCATEGORY_BLOC');
-      } else if (emitState) {
-        emit(SubcategoryError(e.toString()));
-      }
+      // Error handling...
     } finally {
       _pendingCategories.remove(categoryId);
     }
+  }
+
+// Helper to compare if subcategory lists are effectively the same
+  bool listsAreEqual(List<SubCategoryMenu> list1, List<SubCategoryMenu> list2) {
+    if (list1.length != list2.length) return false;
+
+    // Create maps of ID -> count for comparison
+    Map<int, int> counts1 = {for (var item in list1) item.id: item.servicePostsCount};
+    Map<int, int> counts2 = {for (var item in list2) item.id: item.servicePostsCount};
+
+    // Compare by IDs and counts
+    for (var id in counts1.keys) {
+      if (!counts2.containsKey(id) || counts1[id] != counts2[id]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  void startBackgroundRefresh(int categoryId) {
+    // Skip if already pending
+    if (_pendingCategories.contains(categoryId)) {
+      DebugLogger.log(
+          'Skipping background refresh for category $categoryId: already in progress',
+          category: 'SUBCATEGORY_BLOC');
+      return;
+    }
+
+    // Check if we've refreshed this category recently
+    if (_lastRefreshTimes.containsKey(categoryId)) {
+      final lastRefresh = _lastRefreshTimes[categoryId]!;
+      final timeSince = DateTime.now().difference(lastRefresh);
+
+      if (timeSince < _refreshThrottleTime) {
+        DebugLogger.log(
+            'Skipping background refresh for category $categoryId: refreshed ${timeSince.inSeconds}s ago',
+            category: 'SUBCATEGORY_BLOC');
+        return;
+      }
+    }
+
+    // Track this refresh time
+    _lastRefreshTimes[categoryId] = DateTime.now();
+
+    // Proceed with the refresh, but use the FetchSubcategories event instead
+    // This will update the caches without showing loading state or emitting UI updates
+    add(FetchSubcategories(
+        categoryId: categoryId,
+        showLoadingState: false,
+        forceRefresh: true
+    ));
   }
 
   // Helper method to fetch categories from API and update caches

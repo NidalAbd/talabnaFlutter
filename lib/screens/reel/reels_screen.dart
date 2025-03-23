@@ -23,7 +23,6 @@ import 'package:talabna/utils/constants.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../data/models/photos.dart';
-import '../../services/deep_link_service.dart';
 import '../../utils/debug_logger.dart';
 import '../../utils/photo_image_helper.dart';
 import '../../utils/premium_badge.dart';
@@ -79,6 +78,8 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
   final double _iconSize = 32;
   final bool _autoPlay = true;
   final ScrollPhysics _pageScrollPhysics = const BouncingScrollPhysics();
+  bool _isPreloadingNextPage = false;
+
 
 // In ReelsHomeScreen class:
 
@@ -264,8 +265,103 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
     return Future.value();
   }
 
+  // Then add the _preloadNextPage method:
+  void _preloadNextPage() {
+    // Exit early if already reached max, loading is in progress, or already preloading
+    if (_hasReachedMax || _isLoadingNextPage || _isPreloadingNextPage) {
+      return;
+    }
+
+    // Only preload if we have at least some posts loaded
+    if (_servicePosts.isEmpty) return;
+
+    _isPreloadingNextPage = true;
+    int preloadPage = _currentPage + 1;
+
+    DebugLogger.log('Preloading reels page: $preloadPage', category: 'REELS');
+    _servicePostBloc.add(GetServicePostsRealsEvent(
+        page: preloadPage,
+        preloadOnly: true
+    ));
+
+    // Reset preloading flag after a timeout
+    Future.delayed(Duration(seconds: 3), () {
+      if (mounted) {
+        _isPreloadingNextPage = false;
+      }
+    });
+  }
+
+  void _showRateLimitMessage(String message) {
+    // Extract seconds from the message if available
+    int seconds = 0;
+    final regex = RegExp(r'(\d+)\s*seconds');
+    final match = regex.firstMatch(message);
+    if (match != null && match.groupCount >= 1) {
+      seconds = int.tryParse(match.group(1) ?? '0') ?? 0;
+    }
+
+    // If we have a valid countdown, show a countdown timer
+    if (seconds > 0 && seconds < 60) {
+      // Create a counter
+      int remaining = seconds;
+
+      // Show initial message
+      final snackBar = SnackBar(
+        content: StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            // Set up timer if not already running
+            Timer.periodic(Duration(seconds: 1), (timer) {
+              if (remaining <= 0) {
+                timer.cancel();
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                return;
+              }
+
+              setState(() {
+                remaining--;
+              });
+            });
+
+            return Text('Rate limit reached. Retrying in $remaining seconds...');
+          },
+        ),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: seconds + 1),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    } else {
+      // Regular error message for non-countdown cases
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
   void _handleReelPostLoadSuccess(
-      List<ServicePost> servicePosts, bool hasReachedMax) {
+      List<ServicePost> servicePosts, bool hasReachedMax, bool isPreloadOnly) {
+    // If this is a preload-only update and we already have posts,
+    // just add to internal cache in the bloc but don't update UI
+    if (isPreloadOnly && _servicePosts.isNotEmpty) {
+      DebugLogger.log(
+          'Received preloaded page with ${servicePosts.length} posts (caching only)',
+          category: 'REELS');
+      _isPreloadingNextPage = false;
+      return;
+    }
+
     setState(() {
       // Set flag to prevent further loading
       _hasReachedMax = hasReachedMax;
@@ -301,13 +397,13 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
       // If we're coming from a deep link with a specific post ID
       if (widget.postId != null) {
         final int postId = int.parse(widget.postId!);
-        final bool foundPost = servicePosts.any((post) => post.id == postId);
+        final bool foundPost = _servicePosts.any((post) => post.id == postId);
 
         // If the specific post is found, request more posts for swiping
         if (foundPost && !_hasReachedMax) {
-          // Always request more posts to allow swiping
-          Timer(Duration(milliseconds: 500), () {
-            _loadNextPage();
+          // When in a single-post view, preload next page to allow continued swiping
+          Timer(Duration(milliseconds: 300), () {
+            _preloadNextPage();
           });
         }
       }
@@ -450,34 +546,49 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
           listener: (context, state) {
             if (state is ServicePostLoadSuccess) {
               // If we have a specific postId from deep link, handle it differently
-              if (widget.postId != null) {
+              if (widget.postId != null && state.event == 'GetServicePostByIdEvent') {
                 // Try to find the specific post
                 ServicePost? specificPost;
                 try {
                   specificPost = state.servicePosts.firstWhere(
-                      (post) => post.id == int.parse(widget.postId!));
+                          (post) => post.id == int.parse(widget.postId!));
                 } catch (e) {
                   specificPost = null;
                 }
 
                 if (specificPost != null) {
                   // We found the post, now display just this one
-                  _handleReelPostLoadSuccess([specificPost], true);
+                  _handleReelPostLoadSuccess([specificPost], true, false);
 
                   // Mark as valid for future deep links
                   ReelsStateManager().markPostAsValid(widget.postId!);
                 } else {
                   // Post not found in the feed, show normal feed
                   _handleReelPostLoadSuccess(
-                      state.servicePosts, state.hasReachedMax);
+                      state.servicePosts,
+                      state.hasReachedMax,
+                      state.preloadOnly ?? false
+                  );
                 }
-              } else {
+              } else if (state.event == 'GetServicePostsForReals') {
                 // No specific post, handle normally
                 _handleReelPostLoadSuccess(
-                    state.servicePosts, state.hasReachedMax);
+                    state.servicePosts,
+                    state.hasReachedMax,
+                    state.preloadOnly ?? false
+                );
               }
-            } else if (state is ServicePostLoadFailure) {
-              _showErrorSnackBar(state.errorMessage);
+            }  else if (state is ServicePostLoadFailure) {
+              // Special handling for rate limiting errors
+              if (state.errorMessage.contains('Rate limit') ||
+                  state.errorMessage.contains('429') ||
+                  state.errorMessage.contains('Too Many Requests')) {
+                // Show rate limit message with possible countdown
+                _showRateLimitMessage(state.errorMessage);
+              } else {
+                // Regular error
+                _showErrorSnackBar(state.errorMessage);
+              }
             }
           },
           child: RefreshIndicator(
@@ -533,11 +644,26 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
   }
 
   Widget _buildReelsPageView() {
-    // If no posts yet, show loading indicator
+    // If no posts yet, show loading indicator with better appearance
     if (_servicePosts.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: Colors.white,
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: AppTheme.lightPrimaryColor,
+              strokeWidth: 3,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Loading reels...',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -1233,11 +1359,49 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
   }
 
   void _showErrorSnackBar(String message) {
+    // Clean up the error message to be more user friendly
+    String displayMessage = message;
+    bool isRateLimit = false;
+
+    if (message.contains('429') || message.contains('Too Many Requests') ||
+        message.contains('Rate limit')) {
+      // Rate limiting error
+      isRateLimit = true;
+
+      // Don't clean up the message if it already contains timing information
+      if (!message.contains('seconds')) {
+        displayMessage = 'Too many requests. Please try again in a moment.';
+      } else {
+        // Keep the original message with timing information
+        displayMessage = message;
+      }
+    } else if (message.contains('SocketException') || message.contains('Connection failed')) {
+      // Network error
+      displayMessage = 'Network connection issue. Please check your internet connection.';
+    } else if (message.contains('timeout')) {
+      // Timeout error
+      displayMessage = 'Connection timed out. Please try again.';
+    } else if (message.contains('No reels found') || message.contains('No posts')) {
+      // No content error
+      displayMessage = 'No reels available at the moment. Try again later.';
+    } else if (message.length > 100) {
+      // Truncate very long error messages
+      displayMessage = 'Error loading content. Please try again.';
+    }
+
+    // Show rate limit messages differently
+    if (isRateLimit) {
+      _showRateLimitMessage(displayMessage);
+      return;
+    }
+
+    // Show regular error message
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Error: $message'),
+        content: Text(displayMessage),
         backgroundColor: Colors.redAccent,
         behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 3),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
         ),
@@ -1248,6 +1412,15 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
         ),
       ),
     );
+  }
+
+  void _scheduleRetryAfterRateLimit() {
+    // Wait for 3 seconds before retrying
+    Timer(Duration(seconds: 3), () {
+      if (mounted) {
+        _handleRefresh();
+      }
+    });
   }
 
   // Helper method to format count numbers (e.g., 1000 -> 1K)

@@ -451,6 +451,9 @@ class _UpdatePostScreenState extends State<UpdatePostScreen> {
         category: _selectedCategory ?? widget.servicePost.category,
         subCategory: _selectedSubCategory ?? widget.servicePost.subCategory,
         photos: _pickedImages,
+        // Always include the original badge parameters
+        haveBadge: widget.servicePost.haveBadge,
+        badgeDuration: widget.servicePost.badgeDuration,
       );
 
       // Process images directly from _pickedImages like in create screen
@@ -473,16 +476,14 @@ class _UpdatePostScreenState extends State<UpdatePostScreen> {
                 // Set the correct mime type based on file type
                 if (isVideo) {
                   mimeType = 'video/mp4';
-                  print(
-                      'Processing video file: ${photo.src}, isVideo: ${photo.isVideo}');
+                  print('Processing video file: ${photo.src}, isVideo: ${photo.isVideo}');
                 } else {
                   mimeType = lookupMimeType(photo.src!) ?? 'image/jpeg';
                   print('Processing image file: ${photo.src}, type: $mimeType');
                 }
 
                 final filename = p.basename(photo.src!);
-                print(
-                    'Creating MultipartFile for $filename with type $mimeType');
+                print('Creating MultipartFile for $filename with type $mimeType');
 
                 final multipartFile = http.MultipartFile.fromBytes(
                   'images[]',
@@ -505,18 +506,20 @@ class _UpdatePostScreenState extends State<UpdatePostScreen> {
 
       // Add the update events
       context.read<ServicePostBloc>().add(UpdateServicePostEvent(
-            servicePost: updatedPost,
-            imageFiles: imageFiles,
-          ));
+        servicePost: updatedPost,
+        imageFiles: imageFiles,
+      ));
     } catch (e) {
       print('Submit error: $e');
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_language.tErrorUpdatingPost())));
+            SnackBar(content: Text(_language.tErrorUpdatingPost()))
+        );
       }
     }
   }
+
 
   Future<List<http.MultipartFile>> _processImages() async {
     final imageFiles = <http.MultipartFile>[];

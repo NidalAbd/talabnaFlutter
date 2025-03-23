@@ -140,10 +140,32 @@ class LocalCategoryDataSource implements CategoryDataSource {
     }
   }
 
+  bool isCountDataStale(String key, {int maxAgeMinutes = 5}) {
+    // Count data should be refreshed more frequently than general data
+    final timestamp = sharedPreferences.getInt('${key}_last_count_update');
+    if (timestamp == null) return true;
+
+    final lastUpdate = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final now = DateTime.now();
+
+    final stale = now.difference(lastUpdate).inMinutes > maxAgeMinutes;
+
+    // Log the status
+    if (stale) {
+      DebugLogger.log('Count data for $key is stale (last updated ${now.difference(lastUpdate).inMinutes} minutes ago)',
+          category: 'DATA_SOURCE');
+    }
+
+    return stale;
+  }
+
   Future<void> cacheSubCategoriesMenu(
       int categoryId, List<SubCategoryMenu> subcategories) async {
     try {
-      // Try to load existing cached data first
+      // Set the timestamp for both general data and count data updates
+      final currentTime = DateTime.now().millisecondsSinceEpoch;
+
+      // Try to load existing cached data for merging
       List<SubCategoryMenu> existingItems = [];
       try {
         existingItems = await getSubCategoriesMenu(categoryId);
@@ -163,70 +185,47 @@ class LocalCategoryDataSource implements CategoryDataSource {
 
       // Process each new item from the API
       for (final newItem in subcategories) {
-        if (existingMap.containsKey(newItem.id)) {
-          // If we have this subcategory in cache
-          final existingItem = existingMap[newItem.id]!;
-
-          // Only use the existing servicePostsCount if it's higher
-          // This preserves the highest known count
-          final int finalCount =
-              existingItem.servicePostsCount > newItem.servicePostsCount
-                  ? existingItem.servicePostsCount
-                  : newItem.servicePostsCount;
-
-          // Create a new item with all the latest data but preserved count
-          final mergedItem = SubCategoryMenu(
-              id: newItem.id,
-              name: newItem.name,
-              categoriesId: newItem.categoriesId,
-              // Ensure we keep the category ID
-              createdAt: newItem.createdAt,
-              updatedAt: newItem.updatedAt,
-              servicePostsCount: finalCount,
-              // Use the higher count
-              photos: newItem.photos,
-              isSuspended: newItem.isSuspended);
-
-          finalItems.add(mergedItem);
-        } else {
-          // For new items, ensure category ID is properly set
-          final verifiedItem = SubCategoryMenu(
-              id: newItem.id,
-              name: newItem.name,
-              categoriesId:
-                  newItem.categoriesId != 0 ? newItem.categoriesId : categoryId,
-              // Use provided categoryId as fallback
-              createdAt: newItem.createdAt,
-              updatedAt: newItem.updatedAt,
-              servicePostsCount: newItem.servicePostsCount,
-              photos: newItem.photos,
-              isSuspended: newItem.isSuspended);
-          finalItems.add(verifiedItem);
-        }
+        // Always use the new count from the API - this is the key change
+        finalItems.add(SubCategoryMenu(
+            id: newItem.id,
+            name: newItem.name,
+            categoriesId: newItem.categoriesId != 0 ? newItem.categoriesId : categoryId,
+            createdAt: newItem.createdAt,
+            updatedAt: newItem.updatedAt,
+            servicePostsCount: newItem.servicePostsCount, // Always use the new count
+            photos: newItem.photos,
+            isSuspended: newItem.isSuspended));
       }
 
-      // Sanitize and save the merged data
+      // Set timestamps
+      await sharedPreferences.setInt(
+          'cached_subcategory_menu_${categoryId}_timestamp',
+          currentTime);
+      await sharedPreferences.setInt(
+          'cached_subcategory_menu_${categoryId}_last_count_update',
+          currentTime);
+
+      // Sanitize and save the data
       final sanitizedSubcategories = finalItems.map((s) {
-        // First convert to JSON
         final originalJson = s.toJson();
-        // Then sanitize for storage
         final storableJson = _sanitizeForStorage(originalJson);
-        // Finally, properly structure the data
         return _sanitizeSubCategoryMenuJson(storableJson);
       }).toList();
 
+      // Save to shared preferences
       final String jsonString = json.encode(sanitizedSubcategories);
       await sharedPreferences.setString(
           'cached_subcategory_menu_$categoryId', jsonString);
-      await sharedPreferences.setInt(
-          'cached_subcategory_menu_${categoryId}_timestamp',
-          DateTime.now().millisecondsSinceEpoch);
 
-      // OPTIMIZATION: Update memory cache
-      _memoryCache['cached_subcategory_menu_$categoryId'] =
-          sanitizedSubcategories;
-      _memoryCacheTimestamps['cached_subcategory_menu_$categoryId'] =
-          DateTime.now();
+      // Update memory cache
+      _memoryCache['cached_subcategory_menu_$categoryId'] = sanitizedSubcategories;
+      _memoryCacheTimestamps['cached_subcategory_menu_$categoryId'] = DateTime.now();
+
+      // Log the counts for debugging
+      DebugLogger.log(
+          'Updated subcategory counts for category $categoryId: ' +
+              finalItems.map((s) => '${s.id}=${s.servicePostsCount}').join(', '),
+          category: 'DATA_SOURCE');
 
       DebugLogger.log(
           'Cached ${finalItems.length} subcategory menu items for category $categoryId to local storage',
@@ -234,6 +233,26 @@ class LocalCategoryDataSource implements CategoryDataSource {
     } catch (e) {
       DebugLogger.log('Error caching subcategory menu to local storage: $e',
           category: 'DATA_SOURCE');
+    }
+  }
+
+  Future<void> updateSubcategoryCountsTimestamp(int categoryId) async {
+    try {
+      final currentTime = DateTime.now().millisecondsSinceEpoch;
+      await sharedPreferences.setInt(
+          'cached_subcategory_menu_${categoryId}_last_count_update',
+          currentTime
+      );
+
+      DebugLogger.log(
+          'Updated count data timestamp for category $categoryId subcategories',
+          category: 'DATA_SOURCE'
+      );
+    } catch (e) {
+      DebugLogger.log(
+          'Error updating subcategory count timestamp: $e',
+          category: 'DATA_SOURCE'
+      );
     }
   }
 

@@ -11,6 +11,7 @@ import 'package:talabna/data/repositories/service_post_repository.dart';
 import 'package:talabna/utils/debug_logger.dart';
 
 import '../../core/network_connectivity.dart';
+import '../../utils/rate_limit_manager.dart';
 
 class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   final ServicePostRepository servicePostRepository;
@@ -41,6 +42,22 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
   // Flag indicating if cache has been initialized
   bool _isCacheInitialized = false;
+  final Map<String, bool> _requestsInProgress = {};
+
+  bool _dataSaverEnabled = false;
+
+// Add this method to initialize data saver mode
+  Future<void> _initializeDataSaverMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _dataSaverEnabled = prefs.getBool('data_saver_enabled') ?? false;
+      DebugLogger.log('Data saver mode initialized: $_dataSaverEnabled',
+          category: 'SERVICE_POST_BLOC');
+    } catch (e) {
+      DebugLogger.log('Error initializing data saver mode: $e',
+          category: 'SERVICE_POST_BLOC');
+    }
+  }
 
   ServicePostBloc({
     required this.servicePostRepository,
@@ -68,7 +85,11 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     on<ClearServicePostCacheEvent>(_handleClearServicePostCacheEvent);
     on<GetAllServicePostsEvent>(_handleGetAllServicePostsEvent);
     on<InitializeCachesEvent>(_handleInitializeCachesEvent);
+    // Add data saver event handlers
+    on<DataSaverToggleEvent>(_handleDataSaverToggleEvent);
+    on<DataSaverStatusChangedEvent>(_handleDataSaverStatusChangedEvent);
     _setupConnectivityListener();
+    _initializeDataSaverMode();
   }
 
   void _setupConnectivityListener() {
@@ -438,70 +459,123 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     }
   }
 
-// In ServicePostBloc.dart
-// Modify _handleGetServicePostsByCategoryEvent method to always fetch from API
-
   Future<void> _handleGetServicePostsByCategoryEvent(
       GetServicePostsByCategoryEvent event,
       Emitter<ServicePostState> emit) async {
     final category = event.category;
     final page = event.page;
 
-    // Always show loading for the first page
-    if (page == 1) {
+    // Only show loading for the first page if showLoadingState is true
+    if (page == 1 && event.showLoadingState) {
       emit(const ServicePostLoading(event: 'GetServicePostsByCategoryEvent'));
     }
 
-    // Prevent duplicate requests
-    final cacheKey = 'category_${category}_page${page}';
-    if (_pendingRequests.contains(cacheKey)) {
+    // Create a unique request key that includes all relevant parameters
+    final cacheKey = 'category_${category}_page${page}_${event.forceRefresh}';
+
+    // Check if this exact request is already in progress
+    if (_requestsInProgress[cacheKey] == true) {
       DebugLogger.log(
           'Request already in progress for category $category page $page',
           category: 'SERVICE_POST_BLOC');
-      return;
+      return; // Skip this request
     }
 
-    _pendingRequests.add(cacheKey);
+    // Mark this request as in progress
+    _requestsInProgress[cacheKey] = true;
 
     try {
-      // Always fetch from API
+      // Always fetch from API for fresh data
+      final stopwatch = Stopwatch()..start();
+
       final servicePosts =
           await servicePostRepository.getServicePostsByCategory(
         categories: category,
         page: page,
       );
 
-      _pendingRequests.remove(cacheKey);
+      stopwatch.stop();
+      DebugLogger.log(
+          'Fetched ${servicePosts.length} posts for category $category in ${stopwatch.elapsedMilliseconds}ms',
+          category: 'SERVICE_POST_BLOC');
 
-      // Filter out deleted posts for consistent UI
+      // Cache first page results
+      if (page == 1) {
+        _categoryPostsCache[category] = servicePosts;
+        // Update LRU tracking
+        _updateRecentlyAccessedCategories(category);
+      }
+
       final filteredPosts = servicePosts
           .where((post) => !_deletedPostIds.contains(post.id))
           .toList();
 
-      // Update state with new posts
-      if (state is! ServicePostLoadSuccess || page == 1) {
+      DebugLogger.log(
+          'Emitting state with ${filteredPosts.length} posts for category $category page $page',
+          category: 'SERVICE_POST_BLOC');
+
+      // For first page, always replace existing posts
+      if (page == 1) {
         emit(ServicePostLoadSuccess(
             servicePosts: filteredPosts,
-            hasReachedMax: filteredPosts.length < 10,
+            hasReachedMax: filteredPosts.isEmpty || filteredPosts.length < 10,
             event: 'GetServicePostsByCategoryEvent'));
-      } else {
+      }
+      // For pagination, append posts to existing list
+      else if (state is ServicePostLoadSuccess) {
         final currentState = state as ServicePostLoadSuccess;
 
         if (filteredPosts.isEmpty) {
           emit(currentState.copyWith(hasReachedMax: true));
         } else {
-          // For pagination, append to existing posts
-          emit(currentState.copyWith(
-            servicePosts: currentState.servicePosts + filteredPosts,
+          // Get the current posts
+          final currentPosts =
+              List<ServicePost>.from(currentState.servicePosts);
+
+          // Append the new posts
+          currentPosts.addAll(filteredPosts);
+
+          // Emit the updated state
+          emit(ServicePostLoadSuccess(
+            servicePosts: currentPosts,
             hasReachedMax: filteredPosts.length < 10,
+            event: 'GetServicePostsByCategoryEvent',
           ));
         }
+      } else {
+        // Fallback case
+        emit(ServicePostLoadSuccess(
+            servicePosts: filteredPosts,
+            hasReachedMax: filteredPosts.isEmpty || filteredPosts.length < 10,
+            event: 'GetServicePostsByCategoryEvent'));
       }
     } catch (e) {
-      _pendingRequests.remove(cacheKey);
+      DebugLogger.log('Error fetching service posts: $e',
+          category: 'SERVICE_POST_BLOC');
 
-      emit(ServicePostLoadFailure(
-          errorMessage: e.toString(), event: 'GetServicePostsByCategoryEvent'));
+      // If we have cached data for this category, use it despite the error
+      if (page == 1 && _categoryPostsCache.containsKey(category)) {
+        final cachedPosts = _categoryPostsCache[category]!;
+        final filteredPosts = cachedPosts
+            .where((post) => !_deletedPostIds.contains(post.id))
+            .toList();
+
+        DebugLogger.log('Using cached posts after API error',
+            category: 'SERVICE_POST_BLOC');
+
+        emit(ServicePostLoadSuccess(
+          servicePosts: filteredPosts,
+          hasReachedMax: true, // Mark as reached max when using fallback cache
+          event: 'GetServicePostsByCategoryEvent',
+        ));
+      } else {
+        emit(ServicePostLoadFailure(
+            errorMessage: e.toString(),
+            event: 'GetServicePostsByCategoryEvent'));
+      }
+    } finally {
+      // Always mark the request as completed, regardless of success or failure
+      _requestsInProgress[cacheKey] = false;
     }
   }
 
@@ -622,18 +696,63 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
   Future<void> _handleGetServicePostsRealsEvent(
       GetServicePostsRealsEvent event, Emitter<ServicePostState> emit) async {
-    // Always show loading for first page
-    if (event.page == 1) {
+    // Always show loading for first page (unless preload)
+    if (event.page == 1 && !event.preloadOnly) {
       emit(const ServicePostLoading(event: 'GetServicePostsForReals'));
     }
 
     final cacheKey = 'reals_page${event.page}';
+    final endpoint = 'reels';
 
     // Skip duplicate requests
     if (_pendingRequests.contains(cacheKey)) {
       DebugLogger.log(
           'Request already in progress for reels page ${event.page}',
           category: 'SERVICE_POST_BLOC');
+      return;
+    }
+
+    // Check if rate limited
+    final rateLimitManager = RateLimitManager();
+    if (!rateLimitManager.canMakeRequest(endpoint) && !event.bypassRateLimit) {
+      final waitTime = rateLimitManager.timeUntilNextAllowed(endpoint);
+
+      // If this is a preload request, just skip it (no need to show errors)
+      if (event.preloadOnly) {
+        DebugLogger.log(
+            'Skipping preload of reels page ${event.page} due to rate limiting (retry in ${waitTime.inSeconds}s)',
+            category: 'SERVICE_POST_BLOC');
+        return;
+      }
+
+      // For real requests, emit an appropriate state
+      if (event.page > 1) {
+        // If we're loading more data, just mark as reached max temporarily
+        if (state is ServicePostLoadSuccess) {
+          emit((state as ServicePostLoadSuccess).copyWith(hasReachedMax: true));
+        }
+      } else {
+        // For first page, show proper error
+        emit(ServicePostLoadFailure(
+            errorMessage:
+                'Rate limit reached. Please try again in ${waitTime.inSeconds} seconds.',
+            event: 'GetServicePostsForReals'));
+      }
+
+      // Schedule retry if wait time is reasonable
+      if (waitTime.inSeconds < 30) {
+        Future.delayed(waitTime, () {
+          // Only retry if this is still needed (user hasn't navigated away)
+          if (!_pendingRequests.contains(cacheKey)) {
+            add(GetServicePostsRealsEvent(
+                page: event.page,
+                preloadOnly: event.preloadOnly,
+                bypassRateLimit: true // Bypass rate limit check for retry
+                ));
+          }
+        });
+      }
+
       return;
     }
 
@@ -645,6 +764,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
       final servicePosts = await servicePostRepository.getServicePostsForReals(
         page: event.page,
+        bypassRateLimit: event.bypassRateLimit,
       );
 
       _pendingRequests.remove(cacheKey);
@@ -663,11 +783,26 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
           .where((post) => !_deletedPostIds.contains(post.id))
           .toList();
 
+      // Add to reels cache
+      final existingIds = _realsPostsCache.map((p) => p.id).toSet();
+      _realsPostsCache.addAll(filteredPosts
+          .where((post) => post.id != null && !existingIds.contains(post.id)));
+
+      // Check if this is a preload request (should not update UI)
+      if (event.preloadOnly) {
+        // Just add to cache but don't update UI
+        DebugLogger.log(
+            'Preloaded ${filteredPosts.length} posts for page ${event.page}',
+            category: 'SERVICE_POST_BLOC');
+        return;
+      }
+
       // Update state
       if (state is! ServicePostLoadSuccess || event.page == 1) {
         emit(ServicePostLoadSuccess(
             servicePosts: filteredPosts,
             hasReachedMax: hasReachedMax,
+            preloadOnly: event.preloadOnly,
             event: 'GetServicePostsForReals'));
       } else {
         final currentState = state as ServicePostLoadSuccess;
@@ -675,26 +810,114 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         if (filteredPosts.isEmpty) {
           emit(currentState.copyWith(hasReachedMax: true));
         } else {
-          emit(ServicePostLoadSuccess(
-              servicePosts: filteredPosts,
-              hasReachedMax: hasReachedMax,
-              event: 'GetServicePostsForReals'));
+          // For subsequent pages, append unique posts
+          final currentPostIds =
+              currentState.servicePosts.map((p) => p.id).toSet();
+          final uniqueNewPosts = filteredPosts
+              .where((post) =>
+                  post.id != null && !currentPostIds.contains(post.id))
+              .toList();
+
+          if (uniqueNewPosts.isEmpty) {
+            // If no new unique posts, we've reached max
+            emit(currentState.copyWith(hasReachedMax: true));
+          } else {
+            emit(ServicePostLoadSuccess(
+                servicePosts: [...currentState.servicePosts, ...uniqueNewPosts],
+                hasReachedMax: hasReachedMax,
+                preloadOnly: event.preloadOnly,
+                event: 'GetServicePostsForReals'));
+          }
         }
+      }
+
+      // If we loaded this page successfully and we're not at max, preload next page
+      if (!hasReachedMax && !event.preloadOnly && event.page < 5) {
+        // Wait a bit before preloading the next page
+        Future.delayed(Duration(seconds: 1), () {
+          add(GetServicePostsRealsEvent(
+            page: event.page + 1,
+            preloadOnly: true,
+          ));
+        });
       }
     } catch (e) {
       _pendingRequests.remove(cacheKey);
 
       DebugLogger.log('Error loading reels: $e', category: 'SERVICE_POST_BLOC');
 
-      // Handle errors more gracefully
-      if (event.page == 1) {
-        emit(ServicePostLoadFailure(
-            errorMessage: 'Failed to load reels: ${e.toString()}',
-            event: 'GetServicePostsForReals'));
-      } else if (state is ServicePostLoadSuccess) {
-        // For pagination errors, just mark as reached max but keep existing posts
-        emit((state as ServicePostLoadSuccess).copyWith(hasReachedMax: true));
+      // Handle rate limiting errors
+      if (e.toString().contains('429') ||
+          e.toString().contains('Too Many Requests')) {
+        // Apply backoff for this endpoint
+        rateLimitManager.applyBackoff(endpoint, event.page > 1 ? 1 : 0);
+
+        // Only emit error for non-preload requests
+        if (!event.preloadOnly) {
+          // For pagination errors (not first page), just mark as reached max but keep existing posts
+          if (event.page > 1 && state is ServicePostLoadSuccess) {
+            emit((state as ServicePostLoadSuccess)
+                .copyWith(hasReachedMax: true));
+          } else {
+            // Get wait time for better error message
+            final waitTime = rateLimitManager.timeUntilNextAllowed(endpoint);
+            final waitSeconds = waitTime.inSeconds;
+
+            emit(ServicePostLoadFailure(
+                errorMessage: waitSeconds > 0
+                    ? 'Rate limit exceeded. Please try again in $waitSeconds seconds.'
+                    : 'Rate limit exceeded. Please try again in a moment.',
+                event: 'GetServicePostsForReals'));
+          }
+        }
+
+        // Schedule a retry after backoff if needed
+        final waitTime = rateLimitManager.timeUntilNextAllowed(endpoint);
+        if (waitTime.inSeconds < 30 && !event.preloadOnly) {
+          Future.delayed(waitTime + Duration(seconds: 1), () {
+            // Only retry if this is still needed (user hasn't navigated away)
+            if (!_pendingRequests.contains(cacheKey)) {
+              add(GetServicePostsRealsEvent(
+                  page: event.page,
+                  preloadOnly: event.preloadOnly,
+                  bypassRateLimit: true // Bypass rate limit check for retry
+                  ));
+            }
+          });
+        }
+      } else {
+        // Handle other errors
+        if (!event.preloadOnly) {
+          // For pagination errors (not first page), just mark as reached max but keep existing posts
+          if (event.page > 1 && state is ServicePostLoadSuccess) {
+            emit((state as ServicePostLoadSuccess)
+                .copyWith(hasReachedMax: true));
+          } else {
+            emit(ServicePostLoadFailure(
+                errorMessage:
+                    'Failed to load reels. Please check your connection and try again.',
+                event: 'GetServicePostsForReals'));
+          }
+        }
       }
+    }
+  }
+
+  List<ServicePost> _getUniquePostsForReels(
+      List<ServicePost> existingPosts, List<ServicePost> newPosts) {
+    // Create a set of existing IDs for O(1) lookup
+    final existingIds = existingPosts.map((p) => p.id).toSet();
+
+    // Get only posts that don't exist in current list
+    final uniqueNewPosts = newPosts
+        .where((post) => post.id != null && !existingIds.contains(post.id))
+        .toList();
+
+    // If we have unique posts, append them
+    if (uniqueNewPosts.isNotEmpty) {
+      return [...existingPosts, ...uniqueNewPosts];
+    } else {
+      return existingPosts;
     }
   }
 
@@ -1643,6 +1866,68 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         _pendingRequests.remove(cacheKey);
       }
     }
+  }
+
+  // Fixed version of the _handleDataSaverToggleEvent method:
+
+  Future<void> _handleDataSaverToggleEvent(
+      DataSaverToggleEvent event, Emitter<ServicePostState> emit) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('data_saver_enabled', event.enabled);
+      _dataSaverEnabled = event.enabled;
+
+      DebugLogger.log('Data saver mode toggled: $_dataSaverEnabled',
+          category: 'SERVICE_POST_BLOC');
+
+      // Update server preference in background - FIXED ERROR HANDLING
+      try {
+        await servicePostRepository.updateDataSaverPreference(event.enabled);
+      } catch (e) {
+        DebugLogger.log('Failed to sync data saver preference with server: $e',
+            category: 'SERVICE_POST_BLOC');
+        // Error is caught here and not propagated
+      }
+
+      // Update current state if it's a success state
+      if (state is ServicePostLoadSuccess) {
+        final currentState = state as ServicePostLoadSuccess;
+        emit(ServicePostLoadSuccess(
+          servicePosts: currentState.servicePosts,
+          hasReachedMax: currentState.hasReachedMax,
+          event: '${currentState.event}_DataSaverToggled',
+          dataSaverEnabled: _dataSaverEnabled,
+        ));
+      }
+    } catch (e) {
+      DebugLogger.log('Error updating data saver mode: $e',
+          category: 'SERVICE_POST_BLOC');
+    }
+  }
+
+  Future<void> _handleDataSaverStatusChangedEvent(
+      DataSaverStatusChangedEvent event, Emitter<ServicePostState> emit) async {
+    // Just update internal state
+    _dataSaverEnabled = event.enabled;
+
+    DebugLogger.log('Data saver status updated: $_dataSaverEnabled',
+        category: 'SERVICE_POST_BLOC');
+
+    // Update current state if it's a success state
+    if (state is ServicePostLoadSuccess) {
+      final currentState = state as ServicePostLoadSuccess;
+      emit(ServicePostLoadSuccess(
+        servicePosts: currentState.servicePosts,
+        hasReachedMax: currentState.hasReachedMax,
+        event: currentState.event,
+        dataSaverEnabled: _dataSaverEnabled,
+      ));
+    }
+  }
+
+// Helper method to determine if photos should be loaded
+  bool _shouldLoadPhotos() {
+    return !_dataSaverEnabled;
   }
 
   @override

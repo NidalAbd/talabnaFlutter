@@ -57,7 +57,7 @@ class EmailButton extends StatelessWidget {
                 _truncateEmail(email),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
               ),

@@ -10,21 +10,26 @@ class LikeButton extends StatefulWidget {
   final Color likedColor;
   final Color unlikedColor;
   final bool showBurstEffect;
-  final bool showCountOnRight; // New parameter to control count position
-  final bool showCount; // New parameter to control if count is shown
+  final bool showCountOnRight; // Parameter to control count position
+  final bool showCount; // Parameter to control if count is shown
+  final String countText; // New parameter to show text with count
+  final bool showCountText; // New parameter to control if count text is shown
+  final Duration debounceTimeout; // New parameter to prevent quick toggling
 
   const LikeButton({
     super.key,
     required this.isFavorite,
     required this.favoritesCount,
     required this.onToggleFavorite,
-    this.iconSize = 40,
+    this.iconSize = 25,
     this.likedColor = Colors.red,
     this.unlikedColor = Colors.white,
     this.showBurstEffect = true,
-    this.showCountOnRight =
-        false, // By default show count below (like Facebook mobile)
+    this.showCountOnRight = false, // By default show count below (like Facebook mobile)
     this.showCount = true, // By default show the count
+    this.countText = 'likes', // Default text to show with count
+    this.showCountText = false, // By default don't show text with count
+    this.debounceTimeout = const Duration(milliseconds: 500), // Debounce timeout
   });
 
   @override
@@ -39,6 +44,7 @@ class _LikeButtonState extends State<LikeButton>
   late bool _isFavorite;
   late int _favoritesCount;
   bool _isProcessing = false;
+  DateTime? _lastToggleTime;
 
   @override
   void initState() {
@@ -108,7 +114,15 @@ class _LikeButtonState extends State<LikeButton>
   }
 
   Future<void> _handleLikeToggle() async {
-    if (_isProcessing) return;
+    // Prevent rapid toggling by implementing debounce
+    final now = DateTime.now();
+    if (_isProcessing ||
+        (_lastToggleTime != null &&
+            now.difference(_lastToggleTime!) < widget.debounceTimeout)) {
+      return;
+    }
+
+    _lastToggleTime = now;
 
     setState(() {
       _isProcessing = true;
@@ -147,8 +161,13 @@ class _LikeButtonState extends State<LikeButton>
         _favoritesCount += _isFavorite ? 1 : -1;
       });
     } finally {
-      setState(() {
-        _isProcessing = false;
+      // Add a small delay before allowing another toggle
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          setState(() {
+            _isProcessing = false;
+          });
+        }
       });
     }
   }
@@ -207,6 +226,13 @@ class _LikeButtonState extends State<LikeButton>
   Widget _buildCountText() {
     if (!widget.showCount) return const SizedBox.shrink();
 
+    final countString = _formatCount(_favoritesCount);
+
+    // Combine count and text if showCountText is true
+    final displayText = widget.showCountText
+        ? '$countString ${widget.countText}'
+        : countString;
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -222,11 +248,11 @@ class _LikeButtonState extends State<LikeButton>
         );
       },
       child: Text(
-        _formatCount(_favoritesCount),
-        key: ValueKey<int>(_favoritesCount),
+        displayText,
+        key: ValueKey<String>(displayText),
         style: TextStyle(
           color: _isFavorite ? widget.likedColor : widget.unlikedColor,
-          fontSize: widget.iconSize * 0.3,
+          fontSize: widget.iconSize * 0.6,
           fontWeight: FontWeight.bold,
         ),
       ),

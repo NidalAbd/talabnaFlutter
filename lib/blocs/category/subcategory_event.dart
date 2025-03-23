@@ -6,13 +6,19 @@ abstract class SubcategoryEvent {}
 class FetchSubcategories extends SubcategoryEvent {
   final int categoryId;
   final bool showLoadingState;
-  final bool forceRefresh; // Add this field
+  final bool forceRefresh;
+  final bool countOnly; // Add this flag
 
   FetchSubcategories({
     required this.categoryId,
     this.showLoadingState = true,
-    this.forceRefresh = false, // Default to false
+    this.forceRefresh = false,
+    this.countOnly = false, // Default to false
+
   });
+
+  @override
+  List<Object> get props => [categoryId, showLoadingState, forceRefresh, countOnly];
 }
 
 class FetchCategories extends SubcategoryEvent {

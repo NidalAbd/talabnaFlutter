@@ -17,15 +17,17 @@ class GetServicePostsByCategoryEvent extends ServicePostEvent {
   final int category;
   final int page;
   final bool forceRefresh;
+  final bool showLoadingState;
 
   const GetServicePostsByCategoryEvent(
-    this.category,
-    this.page, {
-    this.forceRefresh = false,
-  });
+      this.category,
+      this.page, {
+        this.forceRefresh = false,
+        this.showLoadingState = true,
+      });
 
   @override
-  List<Object> get props => [category, page, forceRefresh];
+  List<Object> get props => [category, page, forceRefresh, showLoadingState];
 }
 
 class GetAllServicePostsEvent extends ServicePostEvent {
@@ -68,15 +70,17 @@ class GetServicePostsByUserFavouriteEvent extends ServicePostEvent {
 
 class GetServicePostsRealsEvent extends ServicePostEvent {
   final int page;
-  final bool forceRefresh;
+  final bool preloadOnly;
+  final bool bypassRateLimit;
 
   const GetServicePostsRealsEvent({
     required this.page,
-    this.forceRefresh = false,
+    this.preloadOnly = false,
+    this.bypassRateLimit = false,
   });
 
   @override
-  List<Object> get props => [page, forceRefresh];
+  List<Object> get props => [page, preloadOnly, bypassRateLimit];
 }
 
 class GetServicePostsByCategorySubCategoryEvent extends ServicePostEvent {
@@ -246,4 +250,27 @@ class ClearServicePostCacheEvent extends ServicePostEvent {
 
   @override
   List<Object?> get props => [categoryId, subcategoryId, userId, postId];
+}
+
+
+class DataSaverToggleEvent extends ServicePostEvent {
+  final bool enabled;
+
+  const DataSaverToggleEvent({
+    required this.enabled,
+  });
+
+  @override
+  List<Object> get props => [enabled];
+}
+
+class DataSaverStatusChangedEvent extends ServicePostEvent {
+  final bool enabled;
+
+  const DataSaverStatusChangedEvent({
+    required this.enabled,
+  });
+
+  @override
+  List<Object> get props => [enabled];
 }
