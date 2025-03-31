@@ -18,16 +18,22 @@ class GetServicePostsByCategoryEvent extends ServicePostEvent {
   final int page;
   final bool forceRefresh;
   final bool showLoadingState;
+  final String? typeFilter;
+  final double? minPrice;
+  final double? maxPrice;
 
   const GetServicePostsByCategoryEvent(
       this.category,
       this.page, {
         this.forceRefresh = false,
         this.showLoadingState = true,
+        this.typeFilter,
+        this.minPrice,
+        this.maxPrice,
       });
 
   @override
-  List<Object> get props => [category, page, forceRefresh, showLoadingState];
+  List<Object?> get props => [category, page, forceRefresh, showLoadingState, typeFilter, minPrice, maxPrice];
 }
 
 class GetAllServicePostsEvent extends ServicePostEvent {
@@ -88,16 +94,22 @@ class GetServicePostsByCategorySubCategoryEvent extends ServicePostEvent {
   final int subCategory;
   final int page;
   final bool forceRefresh;
+  final String? typeFilter;
+  final double? minPrice;
+  final double? maxPrice;
 
   const GetServicePostsByCategorySubCategoryEvent({
     required this.category,
     required this.subCategory,
     required this.page,
     this.forceRefresh = false,
+    this.typeFilter,
+    this.minPrice,
+    this.maxPrice,
   });
 
   @override
-  List<Object> get props => [category, subCategory, page, forceRefresh];
+  List<Object?> get props => [category, subCategory, page, forceRefresh, typeFilter, minPrice, maxPrice];
 }
 
 class GetServicePostsByUserIdEvent extends ServicePostEvent {

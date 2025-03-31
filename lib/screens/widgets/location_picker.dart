@@ -14,19 +14,21 @@ class LocationPicker extends StatefulWidget {
 }
 
 class _LocationPickerState extends State<LocationPicker> {
-  LatLng? _pickedLocation;
-  Location location = Location();
+  final Language _language = Language();
   bool _isMounted = true;
   bool _isLoading = false;
-  bool _permissionDenied = false;
-  int _permissionRequestCount = 0;
-  final Language _language = Language();
+  final defaultLocation = LatLng(31.9539, 35.2376); // Default to Amman, Jordan
 
   @override
   void initState() {
     super.initState();
     _isMounted = true;
-    _getCurrentLocation();
+
+    // Automatically get location when the widget initializes
+    // Use a small delay to ensure the widget is fully rendered
+    Future.delayed(Duration(milliseconds: 100), () {
+      _getCurrentLocation();
+    });
   }
 
   Future<void> _getCurrentLocation() async {
@@ -34,7 +36,6 @@ class _LocationPickerState extends State<LocationPicker> {
 
     setState(() {
       _isLoading = true;
-      _permissionDenied = false;
     });
 
     try {
@@ -47,12 +48,8 @@ class _LocationPickerState extends State<LocationPicker> {
       if (!serviceEnabled) {
         serviceEnabled = await location.requestService();
         if (!serviceEnabled) {
-          if (_isMounted) {
-            setState(() {
-              _isLoading = false;
-            });
-            _showLocationServicesDisabledDialog();
-          }
+          // If service not enabled, use default location
+          _useDefaultLocation();
           return;
         }
       }
@@ -60,22 +57,10 @@ class _LocationPickerState extends State<LocationPicker> {
       // Check if location permissions are granted
       permissionGranted = await location.hasPermission();
       if (permissionGranted == PermissionStatus.denied) {
-        // Increment the permission request count
-        _permissionRequestCount++;
-
         permissionGranted = await location.requestPermission();
         if (permissionGranted != PermissionStatus.granted) {
-          if (_isMounted) {
-            setState(() {
-              _isLoading = false;
-              _permissionDenied = true;
-            });
-
-            // If the user has denied multiple times, show an explanation dialog
-            if (_permissionRequestCount >= 2) {
-              _showPermissionExplanationDialog();
-            }
-          }
+          // If permission denied, use default location
+          _useDefaultLocation();
           return;
         }
       }
@@ -86,150 +71,72 @@ class _LocationPickerState extends State<LocationPicker> {
       // Check if widget is still mounted before updating state
       if (!_isMounted) return;
 
-      final newLocation =
-          LatLng(locationData.latitude!, locationData.longitude!);
+      final newLocation = LatLng(
+          locationData.latitude!,
+          locationData.longitude!
+      );
+
+      // Send location to parent
+      widget.onLocationPicked(newLocation);
 
       setState(() {
-        _pickedLocation = newLocation;
         _isLoading = false;
       });
 
-      widget.onLocationPicked(newLocation);
+      // Show success message
+      _showSuccessMessage(true);
+
     } catch (e) {
-      // Handle any errors but don't update state if widget is unmounted
       print('Error getting location: $e');
       if (_isMounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_language.tErrorGettingLocationText())));
+        _useDefaultLocation();
       }
     }
   }
 
-  void _showLocationServicesDisabledDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(_language.tLocationServicesDisabledText()),
-          content: Text(_language.tLocationServicesExplanationText()),
-          actions: <Widget>[
-            TextButton(
-              child: Text(_language.tCancelText()),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text(_language.tRetryText()),
-              onPressed: () {
-                Navigator.of(context).pop();
-                _getCurrentLocation();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
+  void _useDefaultLocation() {
+    if (!_isMounted) return;
 
-  void _showPermissionExplanationDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(_language.tPermissionDeniedText()),
-          content: Text(_language.tLocationPermissionManualEnableText()),
-          actions: <Widget>[
-            TextButton(
-              child: Text(_language.tOkText()),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // Set a manual location since we can't get the device location
-  void _setManualLocation() {
-    // Default location (e.g., city center)
-    final LatLng defaultLocation =
-        LatLng(31.9539, 35.2376); // Default to Amman, Jordan
-
-    setState(() {
-      _pickedLocation = defaultLocation;
-      _permissionDenied = false;
-    });
-
+    // Use default location
     widget.onLocationPicked(defaultLocation);
 
+    setState(() {
+      _isLoading = false;
+    });
+
+    // Show default location message
+    _showSuccessMessage(false);
+  }
+
+  void _showSuccessMessage(bool isActualLocation) {
+    if (!_isMounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_language.tManualLocationSetText())));
+        SnackBar(
+          content: Text(
+              isActualLocation
+                  ? (_language.getLanguage() == 'ar'
+                  ? 'تم تحديد موقعك بنجاح'
+                  : 'Your location has been successfully captured')
+                  : (_language.getLanguage() == 'ar'
+                  ? 'تم استخدام الموقع الافتراضي'
+                  : 'Using default location')
+          ),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        )
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (_isLoading)
-          Center(
-            child: Column(
-              children: [],
-            ),
-          ),
-        if (_permissionDenied)
-          Center(
-            child: Column(
-              children: [
-                Icon(Icons.location_off, size: 48, color: Colors.grey),
-                SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    _language.tLocationPermissionExplanationText(),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
-                SizedBox(height: 16),
-                // Fix the overflow by using a Column instead of a Row
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 200, // Constrain button width
-                      child: ElevatedButton.icon(
-                        icon: Icon(Icons.location_on),
-                        label: Text(_language.tTryAgainText()),
-                        onPressed: _getCurrentLocation,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    SizedBox(
-                      width: 200, // Constrain button width
-                      child: ElevatedButton.icon(
-                        icon: Icon(Icons.place),
-                        label: Text(_language.tUseDefaultLocationText()),
-                        onPressed: _setManualLocation,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey[600],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
+    // Return an absolutely invisible widget
+    // This will ensure no space is taken and nothing is rendered
+    return const SizedBox.shrink();
   }
+
+  final Location location = Location();
 
   @override
   void dispose() {

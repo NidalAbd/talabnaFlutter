@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:talabna/app_theme.dart';
 import 'package:talabna/provider/language.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../services/device_info_service.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -14,8 +15,10 @@ class AboutScreen extends StatefulWidget {
 
 class _AboutScreenState extends State<AboutScreen> {
   final Language _language = Language();
-  String _appVersion = '';
-  String _appName = '';
+  final AppInfoService _appInfoService = AppInfoService(); // Use the singleton service
+  String _appVersion = '1.0.1'; // Default fallback value
+  String _buildNumber = '1'; // Add build number tracking
+  String _appName = 'Talabna';    // Default fallback value
   String _currentYear = '';
   bool _isLoading = true;
 
@@ -25,28 +28,64 @@ class _AboutScreenState extends State<AboutScreen> {
     _loadAppInfo();
   }
 
+
   Future<void> _loadAppInfo() async {
     try {
-      PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      // Use the AppInfoService instead of directly calling package_info
+      await _appInfoService.initialize();
+
+      // Debug print to verify values
+      debugPrint('App name from service: ${_appInfoService.appName}');
+      debugPrint('App version from service: ${_appInfoService.appVersion}');
+      debugPrint('Build number from service: ${_appInfoService.buildNumber}');
+
+      // Get current year
       final DateTime now = DateTime.now();
       final DateFormat formatter = DateFormat('yyyy');
+      final String formattedYear = formatter.format(now);
 
-      setState(() {
-        _appName = packageInfo.appName;
-        _appVersion = packageInfo.version;
-        _currentYear = formatter.format(now);
-        _isLoading = false;
-      });
+      // Only update state if the widget is still mounted
+      if (mounted) {
+        setState(() {
+          // Only set these values if they're not empty
+          if (_appInfoService.appName != null && _appInfoService.appName!.isNotEmpty) {
+            _appName = _appInfoService.appName!;
+          }
+
+          if (_appInfoService.appVersion != null && _appInfoService.appVersion!.isNotEmpty) {
+            _appVersion = _appInfoService.appVersion!;
+          }
+
+          if (_appInfoService.buildNumber != null && _appInfoService.buildNumber!.isNotEmpty) {
+            _buildNumber = _appInfoService.buildNumber!;
+          }
+
+          _currentYear = formattedYear;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _appName = 'Talbna';
-        _appVersion = '1.0.0';
-        _currentYear = DateTime.now().year.toString();
-        _isLoading = false;
-      });
+      // Log specific error for debugging
+      debugPrint('Error loading app info: $e');
+
+      // Fallback to defaults if there's an error
+      if (mounted) {
+        setState(() {
+          _currentYear = DateTime.now().year.toString();
+          _isLoading = false;
+          // _appName and _appVersion already have default values
+        });
+      }
     }
   }
-
+  String getFormattedVersion() {
+    final currentLanguage = _language.getLanguage();
+    if (currentLanguage == 'ar') {
+      return 'الإصدار $_appVersion (${_buildNumber})';
+    } else {
+      return 'Version $_appVersion (${_buildNumber})';
+    }
+  }
   Future<void> _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
     try {
@@ -158,15 +197,15 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor =
-        isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
-    final backgroundColor = isDarkMode
-        ? AppTheme.darkBackgroundColor
-        : AppTheme.lightBackgroundColor;
-    final cardColor = isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
-    final textColor =
-        isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor;
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    // Use theme system values
+    final primaryColor = theme.colorScheme.primary;
+    final backgroundColor = theme.scaffoldBackgroundColor;
+    final cardColor = theme.cardColor;
+    final textColor = theme.colorScheme.onSurface;
+
     final currentLanguage = _language.getLanguage();
     final isArabic = currentLanguage == 'ar';
 
@@ -261,13 +300,11 @@ class _AboutScreenState extends State<AboutScreen> {
                       ),
                     ),
 
-                    // App Version
+                    // App Version - Use the enhanced method that includes build number
                     Padding(
                       padding: const EdgeInsets.only(top: 4.0),
                       child: Text(
-                        isArabic
-                            ? 'الإصدار $_appVersion'
-                            : 'Version $_appVersion',
+                        getFormattedVersion(),
                         style: TextStyle(
                           fontSize: 16,
                           color: Colors.white.withOpacity(0.8),

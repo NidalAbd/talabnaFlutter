@@ -195,17 +195,18 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor =
-        isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
-    final backgroundColor = isDarkMode
-        ? AppTheme.darkBackgroundColor
-        : AppTheme.lightBackgroundColor;
-    final cardColor = isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
-    final textColor =
-        isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor;
-    final isArabic = _language.getLanguage() == 'ar';
+    Widget build(BuildContext context) {
+      final theme = Theme.of(context);
+      final isDarkMode = theme.brightness == Brightness.dark;
+
+      // Use theme system values
+      final primaryColor = theme.colorScheme.primary;
+      final backgroundColor = theme.scaffoldBackgroundColor;
+      final cardColor = theme.cardColor;
+      final textColor = theme.colorScheme.onSurface;
+
+      final currentLanguage = _language.getLanguage();
+      final isArabic = currentLanguage == 'ar';
 
     return Scaffold(
       backgroundColor: backgroundColor,

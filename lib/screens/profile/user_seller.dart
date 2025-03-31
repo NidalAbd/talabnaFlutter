@@ -58,9 +58,9 @@ class UserSellerScreenState extends State<UserSellerScreen> {
     final String currentLang = _language.getLanguage();
 
     if (follower.country != null && follower.city != null) {
-      return '${follower.country?.getCurrencyName(currentLang) ?? ""}, ${follower.city?.getName(currentLang) ?? ""}';
+      return '${follower.country?.getCountryName(currentLang) ?? ""}, ${follower.city?.getName(currentLang) ?? ""}';
     } else if (follower.country != null) {
-      return follower.country?.getCurrencyName(currentLang) ?? "";
+      return follower.country?.getCountryName(currentLang) ?? "";
     } else if (follower.city != null) {
       return follower.city?.getName(currentLang) ?? "";
     } else {

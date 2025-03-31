@@ -102,6 +102,18 @@ class Language extends ChangeNotifier {
     }
   }
 
+  String getLoadingText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'جاري التحميل';
+      case 'en':
+        return 'Loading';
+      default:
+        return 'Loading';
+    }
+  }
+
   String tStoragePermissionExplanationText() {
     final currentLanguage = getLanguage();
     switch (currentLanguage) {
@@ -271,6 +283,79 @@ class Language extends ChangeNotifier {
         return 'Contact Details';
       default:
         return 'Contact Details';
+    }
+  }
+
+  // Add these methods to your Language class
+
+  String tMainMenuText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'القائمة الرئيسية';
+      case 'en':
+        return 'Main Menu';
+      default:
+        return 'Main Menu';
+    }
+  }
+
+  String tContactDetailsText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'بيانات التواصل';
+      case 'en':
+        return 'Contact Details';
+      default:
+        return 'Contact Details';
+    }
+  }
+
+  String tProfileCompleteText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'الملف الشخصي مكتمل';
+      case 'en':
+        return 'Your profile is complete';
+      default:
+        return 'Your profile is complete';
+    }
+  }
+
+  String tProfileIncompleteText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'أكمل ملفك الشخصي للوصول إلى جميع الميزات';
+      case 'en':
+        return 'Complete your profile to access all features';
+      default:
+        return 'Complete your profile to access all features';
+    }
+  }
+
+  String tPreferencesText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'التفضيلات';
+      case 'en':
+        return 'Preferences';
+      default:
+        return 'Preferences';
+    }
+  }
+  String tSearchText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'بحث';
+      case 'en':
+        return 'Search';
+      default:
+        return 'Search';
     }
   }
 
@@ -555,6 +640,18 @@ class Language extends ChangeNotifier {
         return 'User Location';
       default:
         return 'User Location';
+    }
+  }
+
+  String noContactInfoText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'لا يوجد بيانات تواصل';
+      case 'en':
+        return 'No contact information available';
+      default:
+        return 'No contact information available';
     }
   }
 
@@ -1059,33 +1156,6 @@ class Language extends ChangeNotifier {
     }
   }
 
-  String tPreferencesText() {
-    final currentLanguage = getLanguage();
-    switch (currentLanguage) {
-      case 'ar':
-        return 'التفضيلات';
-      case 'en':
-        return 'Preferences';
-      case 'Español':
-        return 'Preferencias';
-      case '中文':
-        return '偏好设置';
-      case 'हिन्दी':
-        return 'प्राथमिकताएँ';
-      case 'Português':
-        return 'Preferências';
-      case 'Русский':
-        return 'Настройки';
-      case '日本語':
-        return '設定';
-      case 'Français':
-        return 'Préférences';
-      case 'Deutsch':
-        return 'Einstellungen';
-      default:
-        return 'Preferences';
-    }
-  }
 
   String tAccountText() {
     final currentLanguage = getLanguage();

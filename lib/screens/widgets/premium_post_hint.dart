@@ -21,6 +21,8 @@ class PremiumPostHint extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    // Theme detection
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final isArabic = language.getLanguage() == 'ar';
     final isPremiumGold = selectedBadgeType == 'ذهبي';
     final isPremiumDiamond = selectedBadgeType == 'ماسي';
@@ -38,186 +40,250 @@ class PremiumPostHint extends StatelessWidget {
         ? 'سيظهر منشورك بشارة $badgeTypeText مميزة كما هو موضح أدناه، مما يزيد من ظهوره ويجذب المزيد من المشاهدات.'
         : 'Your post will be displayed with a premium $badgeTypeText badge as shown below, increasing its visibility and attracting more views.';
 
-    // Theme colors
+    // Theme-adaptive colors
     final Color primaryColor = isPremiumGold
-        ? const Color(0xFFFFD700) // Gold
+        ? const Color(0xFFF86800) // Gold
         : const Color(0xFF00CCFF); // Diamond blue
 
     final Color secondaryColor = isPremiumGold
         ? const Color(0xFFFF9D00) // Deep gold
         : const Color(0xFF0088FF); // Deep blue
 
-    return Container(
+    // Ensuring good contrast in both modes
+    final Color textPrimaryColor = isDarkMode
+        ? primaryColor
+        : isPremiumGold ? const Color(0xFFFFAF00) : const Color(0xFF0066CC);
+
+    final Color backgroundColor = isDarkMode
+        ? Theme.of(context).cardColor.withOpacity(0.2)
+        : primaryColor.withOpacity(0.1);
+
+    final Color borderColor = isDarkMode
+        ? primaryColor.withOpacity(0.5)
+        : primaryColor.withOpacity(0.3);
+
+    final Color textSecondaryColor = isDarkMode
+        ? Colors.grey[300]!
+        : Colors.grey[800]!;
+
+    // Background colors
+    final Color containerBgColor = isDarkMode
+        ? Theme.of(context).cardColor.withOpacity(0.2)
+        : Colors.white;
+
+    final Color headerBgColor = isDarkMode
+        ? primaryColor.withOpacity(0.15)
+        : primaryColor.withOpacity(0.1);
+
+    final Color previewBgColor = isDarkMode
+        ? Theme.of(context).cardColor
+        : Colors.white;
+
+    final Color placeholderColor = isDarkMode
+        ? Colors.grey[700]!
+        : Colors.grey[200]!;
+
+    return Card(
+      elevation: isDarkMode ? 2 : 1,
       margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: primaryColor.withOpacity(0.5), width: 1.5),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            primaryColor.withOpacity(0.05),
-            primaryColor.withOpacity(0.1),
-          ],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: primaryColor.withOpacity(isDarkMode ? 0.3 : 0.2),
+          width: 1,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with icon and title
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.15),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(10),
-                topRight: Radius.circular(10),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isPremiumGold ? Icons.stars_rounded : Icons.diamond_rounded,
-                  color: primaryColor,
-                  size: 24,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: containerBgColor,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with icon and title
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: headerBgColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    hintTitle,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: secondaryColor,
-                    ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isPremiumGold ? Icons.stars_rounded : Icons.diamond_rounded,
+                    color: primaryColor,
+                    size: 24,
                   ),
-                ),
-              ],
-            ),
-          ),
-
-          // Description text
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              hintDescription,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[800],
-              ),
-              textAlign: TextAlign.start,
-            ),
-          ),
-
-          // Preview of how it will look
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Post preview header
-                Row(
-                  children: [
-                    // User avatar
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.grey[300],
-                      child: Icon(
-                        Icons.person,
-                        size: 20,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      isArabic ? 'اسم المستخدم' : 'Username',
-                      style: const TextStyle(
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      hintTitle,
+                      style: TextStyle(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const Spacer(),
-                    // Import and use the actual PremiumBadge widget
-                    PremiumBadge(
-                      badgeType: selectedBadgeType,
-                      userID: userID,
-                      size: 18,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                // Post title placeholder
-                Container(
-                  width: double.infinity,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                // Post content placeholder
-                Column(
-                  children: List.generate(
-                    3,
-                    (index) => Container(
-                      width: double.infinity,
-                      height: 10,
-                      margin: const EdgeInsets.only(bottom: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(4),
+                        color: textPrimaryColor,
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          // Benefit callout
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.visibility,
-                  size: 20,
-                  color: secondaryColor,
+            // Description text
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                hintDescription,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: textSecondaryColor,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    isArabic
-                        ? 'المنشورات المميزة تحصل على مشاهدات أكثر بنسبة 5x!'
-                        : 'Premium posts get 5x more views!',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: secondaryColor,
+                textAlign: TextAlign.start,
+              ),
+            ),
+
+            // Preview of how it will look
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: previewBgColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: isDarkMode
+                        ? Colors.black.withOpacity(0.2)
+                        : Colors.black.withOpacity(0.05),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Post preview header
+                  Row(
+                    children: [
+                      // User avatar with Material Design elevation
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: isDarkMode ? [] : [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 2,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: CircleAvatar(
+                          radius: 16,
+                          backgroundColor: isDarkMode
+                              ? Colors.grey[700]
+                              : Colors.grey[300],
+                          child: Icon(
+                            Icons.person,
+                            size: 20,
+                            color: isDarkMode
+                                ? Colors.grey[300]
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        isArabic ? 'اسم المستخدم' : 'Username',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: isDarkMode
+                              ? Colors.grey[200]
+                              : Colors.grey[800],
+                        ),
+                      ),
+                      const Spacer(),
+                      // Import and use the actual PremiumBadge widget
+                      PremiumBadge(
+                        badgeType: selectedBadgeType,
+                        userID: userID,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Post title placeholder - more rounded for Material Design 3
+                  Container(
+                    width: double.infinity,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: placeholderColor,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(height: 12),
+
+                  // Post content placeholder
+                  Column(
+                    children: List.generate(
+                      3,
+                          (index) => Container(
+                        width: double.infinity,
+                        height: 10,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: placeholderColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+
+            // Benefit callout with Material chip design
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                color: isDarkMode
+                    ? primaryColor.withOpacity(0.15)
+                    : primaryColor.withOpacity(0.1),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.visibility,
+                    size: 18,
+                    color: textPrimaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isArabic
+                          ? 'المنشورات المميزة تحصل على مشاهدات أكثر بنسبة 5x!'
+                          : 'Premium posts get 5x more views!',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

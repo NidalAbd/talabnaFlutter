@@ -7,16 +7,41 @@ class EmailButton extends StatelessWidget {
 
   const EmailButton({super.key, required this.email, required this.width});
 
-  void _launchEmailApp() async {
+  void _launchEmailApp(BuildContext context) async {
+    if (email.isEmpty) {
+      // Show a snackbar if email is empty
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No email available'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     final Uri emailLaunchUri = Uri(
       scheme: 'mailto',
       path: email,
     );
 
-    if (await canLaunchUrl(emailLaunchUri)) {
-      await launchUrl(emailLaunchUri);
-    } else {
-      throw 'Could not launch email app.';
+    try {
+      if (await canLaunchUrl(emailLaunchUri)) {
+        await launchUrl(emailLaunchUri);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch email app'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -31,6 +56,7 @@ class EmailButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -42,23 +68,23 @@ class EmailButton extends StatelessWidget {
             ),
           ),
         ),
-        onPressed: _launchEmailApp,
+        onPressed: () => _launchEmailApp(context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               SizedBox(width: width),
-              // Add a fixed width SizedBox before the icon
-              const Icon(Icons.email),
+              Icon(Icons.email, color: isDarkMode ? Colors.grey.shade900 : Colors.white),
               SizedBox(width: width),
-              // Add some space between the icon and text
-              Text(
-                _truncateEmail(email),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  _truncateEmail(email),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

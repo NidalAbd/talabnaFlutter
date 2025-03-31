@@ -31,11 +31,18 @@ class PurchaseRequestBloc
     });
     on<AddPointsForUser>((event, emit) async {
       try {
-        await repository.addPointsForUsers(
-            pointsRequested: event.request,
-            fromUser: event.fromUser,
-            toUser: event.toUser);
-        emit(PurchaseRequestSuccess());
+        // Make the transfer request and get the purchase request
+        final purchaseRequest = await repository.addPointsForUsers(
+          pointsRequested: event.request,
+          fromUser: event.fromUser,
+          toUser: event.toUser,
+        );
+
+        // Emit success with the purchase request
+        emit(PurchaseRequestSuccess(purchaseRequest: purchaseRequest));
+
+        // Also fetch the updated list of purchase requests
+        add(FetchPurchaseRequests(userId: event.fromUser));
       } catch (e) {
         emit(PurchaseRequestError(e.toString()));
       }

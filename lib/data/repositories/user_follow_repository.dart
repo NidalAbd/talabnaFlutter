@@ -206,10 +206,16 @@ class UserFollowRepository {
       final List postsResult = (data["posts"]["data"] as List)
           .map((e) => ServicePost.fromJson(e))
           .toList();
+      print("Raw response data: ${response.body}");
+
       return {'users': userResult, 'posts': postsResult};
     } else if (response.statusCode == 404) {
+      print("else if  Raw response data: ${response.body}");
+
       throw Exception('هذا الملف الشخصي غير موجود');
     } else {
+      print("else Raw response data: ${response.body}");
+
       throw Exception('فشل في تحميل نتائج البحث');
     }
   }

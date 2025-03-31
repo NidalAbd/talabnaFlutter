@@ -22,6 +22,7 @@ class SubcategoryListView extends StatefulWidget {
   final User user;
   final ServicePostBloc servicePostBloc;
   final UserProfileBloc userProfileBloc;
+  final ScrollController? scrollController; // Add scroll controller parameter
 
   const SubcategoryListView({
     super.key,
@@ -30,6 +31,7 @@ class SubcategoryListView extends StatefulWidget {
     required this.servicePostBloc,
     required this.userProfileBloc,
     required this.user,
+    this.scrollController, // Optional scroll controller
   });
 
   @override
@@ -43,7 +45,7 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
 
   late SubcategoryBloc _subcategoryBloc;
   final RefreshController _refreshController =
-      RefreshController(initialRefresh: false);
+  RefreshController(initialRefresh: false);
 
   // Performance tracking
   final Stopwatch _loadStopwatch = Stopwatch();
@@ -150,15 +152,18 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor =
-        isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    final primaryColor = theme.colorScheme.primary;
+
     final backgroundColor = isDarkMode
         ? AppTheme.darkBackgroundColor
         : AppTheme.lightBackgroundColor;
-    final textColor =
-        isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor;
 
+    final textColor = isDarkMode
+        ? AppTheme.darkTextColor
+        : AppTheme.lightTextColor;
     return BlocConsumer<SubcategoryBloc, SubcategoryState>(
       listener: (context, state) {
         if (state is SubcategoryLoaded) {
@@ -245,6 +250,7 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
             controller: _refreshController,
             onRefresh: _onRefresh,
             child: ListView.builder(
+              controller: widget.scrollController, // Use the provided scroll controller
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: _cachedSubcategories!.length,
               physics: const AlwaysScrollableScrollPhysics(),
@@ -289,6 +295,7 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
             controller: _refreshController,
             onRefresh: _onRefresh,
             child: ListView.builder(
+              controller: widget.scrollController, // Use the provided scroll controller
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: state.subcategories.length,
               physics: const AlwaysScrollableScrollPhysics(),
@@ -317,14 +324,14 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
 
   // Updated to show a transition when count is updating
   Widget _buildSubcategoryCard(
-    SubCategoryMenu subcategory,
-    bool isDarkMode,
-    Color primaryColor,
-    Color backgroundColor,
-    Color textColor,
-    int index,
-    bool isUpdatingCount,
-  ) {
+      SubCategoryMenu subcategory,
+      bool isDarkMode,
+      Color primaryColor,
+      Color backgroundColor,
+      Color textColor,
+      int index,
+      bool isUpdatingCount,
+      ) {
     return Container(
         margin: const EdgeInsets.only(bottom: 12),
         child: Material(
@@ -334,7 +341,7 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
             borderRadius: BorderRadius.circular(16),
             child: Ink(
               decoration: BoxDecoration(
-                color: isDarkMode ? Color(0xFF0C0C0C) : Color(0xFFF3F3F3),
+                color: backgroundColor,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
@@ -362,36 +369,36 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
                           borderRadius: BorderRadius.circular(12),
                           child: subcategory.photos.isNotEmpty
                               ? Image.network(
-                                  '${Constants.apiBaseUrl}/${subcategory.photos[0].src}',
-                                  fit: BoxFit.cover,
-                                  loadingBuilder:
-                                      (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return Center(
-                                      child: CircularProgressIndicator(
-                                        value: loadingProgress
-                                                    .expectedTotalBytes !=
-                                                null
-                                            ? loadingProgress
-                                                    .cumulativeBytesLoaded /
-                                                loadingProgress
-                                                    .expectedTotalBytes!
-                                            : null,
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Icon(
-                                      Icons.image_not_supported_outlined,
-                                      color: primaryColor.withOpacity(0.5),
-                                    );
-                                  },
-                                )
-                              : Icon(
-                                  Icons.category_outlined,
-                                  color: primaryColor.withOpacity(0.5),
-                                  size: 30,
+                            '${Constants.apiBaseUrl}/${subcategory.photos[0].src}',
+                            fit: BoxFit.cover,
+                            loadingBuilder:
+                                (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress
+                                      .expectedTotalBytes !=
+                                      null
+                                      ? loadingProgress
+                                      .cumulativeBytesLoaded /
+                                      loadingProgress
+                                          .expectedTotalBytes!
+                                      : null,
                                 ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.image_not_supported_outlined,
+                                color: primaryColor.withOpacity(0.5),
+                              );
+                            },
+                          )
+                              : Icon(
+                            Icons.category_outlined,
+                            color: primaryColor.withOpacity(0.5),
+                            size: 30,
+                          ),
                         ),
                       ),
                     ),
@@ -473,36 +480,41 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
   }
 
   Widget _buildEmptyState(bool isDarkMode) {
+    final theme = Theme.of(context);
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: ListView(
+        controller: widget.scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          Icon(
-            Icons.category_outlined,
-            color: isDarkMode
-                ? AppTheme.darkDisabledColor
-                : AppTheme.lightDisabledColor,
-            size: 80,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            "No subcategories available",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              color:
-                  isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Try checking back later",
-            style: TextStyle(
-              fontSize: 14,
-              color: isDarkMode
-                  ? AppTheme.darkDisabledColor
-                  : AppTheme.lightDisabledColor,
-            ),
+          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.category_outlined,
+                color: theme.colorScheme.onBackground.withOpacity(0.4),
+                size: 80,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "No subcategories available",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onBackground,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                "Try checking back later",
+                style: TextStyle(
+                  fontSize: 15,
+                  color: theme.colorScheme.onBackground.withOpacity(0.6),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -510,44 +522,58 @@ class _SubcategoryListViewState extends State<SubcategoryListView>
   }
 
   Widget _buildErrorState(String message, bool isDarkMode, Color primaryColor) {
+    final theme = Theme.of(context);
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: ListView(
+        controller: widget.scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          Icon(
-            Icons.error_outline_rounded,
-            color: AppTheme.lightErrorColor,
-            size: 64,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 16,
-              color:
-                  isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () {
-              // Reset the cached data and request again
-              _cachedSubcategories = null;
-              _hasRequestedSubcategories = false;
-              _loadStopwatch.reset();
-              _loadStopwatch.start();
-              _loadSubcategories();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                color: theme.colorScheme.error,
+                size: 64,
               ),
-            ),
-            child: const Text('Retry'),
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: theme.colorScheme.onBackground,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 28),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Reset the cached data and request again
+                  _cachedSubcategories = null;
+                  _hasRequestedSubcategories = false;
+                  _loadStopwatch.reset();
+                  _loadStopwatch.start();
+                  _loadSubcategories();
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -12,11 +12,16 @@ import 'package:talabna/screens/profile/user_card.dart';
 import '../widgets/shimmer_widgets.dart';
 
 class UserFollowerScreen extends StatefulWidget {
-  const UserFollowerScreen(
-      {super.key, required this.userID, required this.user});
+  const UserFollowerScreen({
+    super.key,
+    required this.userID,
+    required this.user,
+    this.primary = true,
+  });
 
   final int userID;
   final User user;
+  final bool primary;
 
   @override
   UserFollowerScreenState createState() => UserFollowerScreenState();
@@ -25,7 +30,7 @@ class UserFollowerScreen extends StatefulWidget {
 class UserFollowerScreenState extends State<UserFollowerScreen>
     with AutomaticKeepAliveClientMixin {
   final Language _language = Language();
-  final ScrollController _scrollSearchController = ScrollController();
+  ScrollController? _scrollSearchController;
   late UserFollowBloc _userFollowBloc;
   late UserActionBloc _userActionBloc;
 
@@ -41,7 +46,12 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
   @override
   void initState() {
     super.initState();
-    _scrollSearchController.addListener(_onScroll);
+    // Only create a controller if primary is false
+    if (!widget.primary) {
+      _scrollSearchController = ScrollController();
+      _scrollSearchController!.addListener(_onScroll);
+    }
+
     _userFollowBloc = context.read<UserFollowBloc>();
     _userActionBloc = context.read<UserActionBloc>();
     _fetchFollowers();
@@ -57,8 +67,10 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
 
   @override
   void dispose() {
-    _scrollSearchController.removeListener(_onScroll);
-    _scrollSearchController.dispose();
+    if (_scrollSearchController != null) {
+      _scrollSearchController!.removeListener(_onScroll);
+      _scrollSearchController!.dispose();
+    }
     _followers.clear();
     super.dispose();
   }
@@ -66,10 +78,11 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
   void _onScroll() {
     if (!_isLoading &&
         !_hasReachedMax &&
-        _scrollSearchController.hasClients &&
-        _scrollSearchController.offset >=
-            _scrollSearchController.position.maxScrollExtent - 200 &&
-        !_scrollSearchController.position.outOfRange) {
+        _scrollSearchController != null &&
+        _scrollSearchController!.hasClients &&
+        _scrollSearchController!.offset >=
+            _scrollSearchController!.position.maxScrollExtent - 200 &&
+        !_scrollSearchController!.position.outOfRange) {
       _handleLoadMore();
     }
   }
@@ -92,9 +105,10 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
   }
 
   Future<bool> _onWillPop() async {
-    if (_scrollSearchController.hasClients &&
-        _scrollSearchController.position.pixels > 0) {
-      _scrollSearchController.animateTo(
+    if (_scrollSearchController != null &&
+        _scrollSearchController!.hasClients &&
+        _scrollSearchController!.position.pixels > 0) {
+      _scrollSearchController!.animateTo(
         0.0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInToLinear,
@@ -143,7 +157,9 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
                     ? AppTheme.darkSecondaryColor
                     : AppTheme.lightPrimaryColor,
                 child: ListView.builder(
-                  controller: _scrollSearchController,
+                  // Only set controller when primary is false
+                  controller: widget.primary ? null : _scrollSearchController,
+                  primary: widget.primary,
                   padding: const EdgeInsets.only(top: 8, bottom: 16),
                   physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: _hasReachedMax
@@ -156,9 +172,9 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: CircularProgressIndicator(
                             color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? AppTheme.darkSecondaryColor
-                                    : AppTheme.lightPrimaryColor,
+                            Theme.of(context).brightness == Brightness.dark
+                                ? AppTheme.darkSecondaryColor
+                                : AppTheme.lightPrimaryColor,
                             strokeWidth: 3,
                           ),
                         ),
@@ -206,7 +222,9 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
                     ? AppTheme.darkSecondaryColor
                     : AppTheme.lightPrimaryColor,
                 child: ListView(
-                  controller: _scrollSearchController,
+                  // Only set controller when primary is false
+                  controller: widget.primary ? null : _scrollSearchController,
+                  primary: widget.primary,
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
                     SizedBox(height: MediaQuery.of(context).size.height / 4),
@@ -227,7 +245,7 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
                               Icons.people_alt_outlined,
                               size: 48,
                               color: Theme.of(context).brightness ==
-                                      Brightness.dark
+                                  Brightness.dark
                                   ? AppTheme.darkSecondaryColor
                                   : AppTheme.lightPrimaryColor,
                             ),
@@ -242,7 +260,7 @@ class UserFollowerScreenState extends State<UserFollowerScreen>
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
                               color:
-                                  Theme.of(context).textTheme.bodyLarge?.color,
+                              Theme.of(context).textTheme.bodyLarge?.color,
                             ),
                           ),
                           const SizedBox(height: 12),

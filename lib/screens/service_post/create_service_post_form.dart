@@ -22,6 +22,7 @@ import 'package:talabna/utils/functions.dart';
 import '../../data/models/photos.dart';
 import '../../data/models/user.dart';
 import '../../provider/language.dart';
+import '../../utils/video_utils.dart';
 import '../widgets/premium_post_hint.dart';
 
 class ServicePostFormScreen extends StatefulWidget {
@@ -116,6 +117,7 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
     });
   }
 
+
   void _saveFormData(String key, dynamic value) {
     setState(() {
       _formData[key] = value;
@@ -175,7 +177,18 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
           );
           return false;
         }
+        if (_description.length < 80) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_language.getLanguage() == 'ar'
+                  ? 'يجب أن يكون الوصف 80 حرف على الأقل'
+                  : 'Description must be at least 80 characters'),
+            ),
+          );
+          return false;
+        }
         break;
+    // Other cases remain the same
       case 2:
         if (_selectedCategory == null || _selectedSubCategory == null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -195,7 +208,6 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
     }
     return true;
   }
-
   Widget _buildStepIndicator() {
     return Container(
       height: 100,
@@ -206,7 +218,7 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
             value: (_currentStep + 1) / _formSteps.length,
             backgroundColor: Colors.grey[200],
             valueColor:
-                AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
+                AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColorLight),
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -217,6 +229,7 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
                 final step = _formSteps[index];
                 final isActive = _currentStep == index;
                 final isCompleted = step['isCompleted'] as bool;
+                final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
                 return Container(
                   width: 80,
@@ -247,7 +260,7 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
                         style: TextStyle(
                           fontSize: 12,
                           color: isActive
-                              ? Theme.of(context).primaryColor
+                              ? isDarkMode ? Colors.white : Colors.black87
                               : Colors.grey,
                         ),
                         textAlign: TextAlign.center,
@@ -326,6 +339,7 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
                     (value?.isEmpty ?? true) ? _language.tRequiredText() : null,
               ),
               const SizedBox(height: 16),
+            // Modification 1: Update validator in the TextFormField for description
               TextFormField(
                 controller: _descriptionController,
                 decoration: InputDecoration(
@@ -334,13 +348,32 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  helperText: _language.getLanguage() == 'ar'
+                      ? 'يجب أن يكون الوصف 80 حرف على الأقل (${_description.length}/80)'
+                      : 'Description must be at least 80 characters (${_description.length}/80)',
+                  helperStyle: TextStyle(
+                    color: _description.length < 80 ? Colors.red : Colors.green,
+                  ),
                 ),
                 maxLength: 5000,
-                maxLines: 3,
+                maxLines: 8,
                 textDirection: TextDirection.rtl,
-                validator: (value) =>
-                    (value?.isEmpty ?? true) ? _language.tRequiredText() : null,
-              ),
+                validator: (value) {
+                  if (value?.isEmpty ?? true) return _language.tRequiredText();
+                  if ((value?.length ?? 0) < 80) {
+                    return _language.getLanguage() == 'ar'
+                        ? 'يجب أن يكون الوصف 80 حرف على الأقل'
+                        : 'Description must be at least 80 characters';
+                  }
+                  return null;
+                },
+                onChanged: (value) {
+                  setState(() {
+                    _description = value;
+                    _saveFormData('description', value);
+                  });
+                },
+              )
             ],
           ),
         ),
@@ -709,28 +742,12 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
         if (photo.src != null) {
           try {
             final file = File(photo.src!);
-            if (await file.exists()) {
-              final bytes = await file.readAsBytes();
-              final mimeType = lookupMimeType(photo.src!) ?? 'image/jpeg';
-
-              if ([
-                'image/jpeg',
-                'image/jpg',
-                'image/png',
-                'image/gif',
-                'video/mp4'
-              ].contains(mimeType)) {
-                final imageFile = http.MultipartFile.fromBytes(
-                  'images[]',
-                  bytes,
-                  filename: p.basename(photo.src!),
-                  contentType: MediaType.parse(mimeType),
-                );
-                imageFiles.add(imageFile);
-              }
+            final multipartFile = await VideoUtils.prepareFileForUpload(file, 'images[]');
+            if (multipartFile != null) {
+              imageFiles.add(multipartFile);
             }
           } catch (e) {
-            print('Error processing image: $e');
+            print('Error processing image/video: $e');
           }
         }
       }
@@ -760,7 +777,6 @@ class _ServicePostFormScreenState extends State<ServicePostFormScreen> {
       setState(() => _isSubmitting = false);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

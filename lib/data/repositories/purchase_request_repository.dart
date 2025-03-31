@@ -4,7 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talabna/data/models/point_balance.dart';
 import 'package:talabna/data/models/purchase_request.dart';
+import 'package:talabna/data/repositories/point_transaction_repository.dart';
 import 'package:talabna/utils/constants.dart';
+
+import '../../core/service_locator.dart';
 
 class PurchaseRequestRepository {
   static const baseUrl = Constants.apiBaseUrl;
@@ -53,42 +56,70 @@ class PurchaseRequestRepository {
     }
   }
 
-  Future<void> addPointsForUsers(
-      {required int pointsRequested,
-      required int fromUser,
-      required int toUser}) async {
+  Future<PurchaseRequest> addPointsForUsers({
+    required int pointsRequested,
+    required int fromUser,
+    required int toUser,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    final token = prefs.getString('auth_token') ?? '';
 
-    // Fix: URL formatting and structure to match what works in Postman
-    final url =
-        '$baseUrl/api/talbna_points/transfer/$pointsRequested/fromUser/$fromUser/toUser/$toUser';
-    print('Requesting URL: $url'); // Debug log
+    // Log request details for debugging
+    print('Requesting URL: $baseUrl/api/talbna_points/transfer/$pointsRequested/fromUser/$fromUser/toUser/$toUser');
 
-    try {
-      final response = await http.get(
-        // Changed to POST method
-        Uri.parse(url),
-        headers: <String, String>{
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/talbna_points/transfer/$pointsRequested/fromUser/$fromUser/toUser/$toUser'),
+      headers: <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
 
-      print('Response status code: ${response.statusCode}');
-      print('Response body: ${response.body}');
+    print('Response status code: ${response.statusCode}');
+    print('Response body: ${response.body}');
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return;
+    if (response.statusCode == 200) {
+      final jsonResponse = jsonDecode(response.body);
+
+      // Check if the response contains a purchase_request object
+      if (jsonResponse.containsKey('purchase_request')) {
+        // Parse the purchase request
+        final purchaseRequest = PurchaseRequest.fromJson(jsonResponse['purchase_request']);
+
+        // After successful transfer, refresh transaction data
+        try {
+          // Use the service locator to get the PointTransactionRepository
+          if (serviceLocator.isRegistered<PointTransactionRepository>()) {
+            final pointTransactionRepository = serviceLocator<PointTransactionRepository>();
+
+            // This could be called asynchronously, no need to await
+            pointTransactionRepository.getLastTransactions(fromUser);
+            if (fromUser != toUser) {
+              pointTransactionRepository.getTransactionsBetweenUsers(fromUser, toUser);
+            }
+          }
+        } catch (e) {
+          print('Error refreshing transaction data: $e');
+          // Don't throw an exception here, as the main operation succeeded
+        }
+
+        return purchaseRequest;
       } else {
-        // More specific error message including the status code
-        throw Exception(
-            'حدث خطأ أثناء تحويل النقاط. رمز الحالة: ${response.statusCode}');
+        // If no purchase request was returned, create a default one
+        return PurchaseRequest(
+          id: 0,
+          userId: fromUser,
+          pointsRequested: pointsRequested,
+          pricePerPoint: 0,
+          totalPrice: 0,
+          status: 'approved',
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
       }
-    } catch (e) {
-      print('Exception occurred: $e');
-      throw Exception('حدث خطأ أثناء تحويل النقاط: $e');
+    } else {
+      throw Exception('حدث خطأ أثناء تحويل النقاط');
     }
   }
 

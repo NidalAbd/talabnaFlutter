@@ -18,6 +18,7 @@ class MainMenuPostScreen extends StatefulWidget {
   final User user;
   final bool showSubcategoryGridView;
   final ServicePostBloc servicePostBloc;
+  final ScrollController? scrollController; // Add scroll controller parameter
 
   const MainMenuPostScreen({
     super.key,
@@ -26,6 +27,7 @@ class MainMenuPostScreen extends StatefulWidget {
     required this.servicePostBloc,
     required this.showSubcategoryGridView,
     required this.user,
+    this.scrollController, // Optional scroll controller
   });
 
   @override
@@ -52,7 +54,6 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
 
   // Add a flag to track when we're toggling views
   bool _isTogglingView = false;
-
 
   @override
   void initState() {
@@ -242,6 +243,7 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
         servicePostBloc: widget.servicePostBloc,
         userProfileBloc: BlocProvider.of<UserProfileBloc>(context),
         user: widget.user,
+        scrollController: widget.scrollController, // Pass the scroll controller
       );
 
       _servicePostWidget = ServicePostScreen(
@@ -251,6 +253,7 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
         servicePostBloc: widget.servicePostBloc,
         showSubcategoryGridView: widget.showSubcategoryGridView,
         user: widget.user,
+        scrollController: widget.scrollController, // Pass the scroll controller
       );
 
       _hasInitializedWidgets = true;
@@ -328,6 +331,7 @@ class MainMenuPostScreenState extends State<MainMenuPostScreen>
         ? _subcategoryWidget
         : _servicePostWidget);
   }
+
   Widget _buildPerformanceOverlay() {
     // Stop the stopwatch if it's still running
     if (_renderStopwatch.isRunning) {

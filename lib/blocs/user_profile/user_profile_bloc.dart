@@ -66,7 +66,7 @@ class UserProfileBloc extends Bloc<UserProfileEvent, UserProfileState> {
       try {
         // Pass context to the repository if available for localization
         final user =
-            await repository.updateUserProfile(event.user, event.context);
+        await repository.updateUserProfile(event.user, event.context);
         emit(UserProfileUpdateSuccess(user: user));
         final isProfileComplete = await _checkProfileCompleteness(user);
 

@@ -25,6 +25,40 @@ class VideoFeedController extends ChangeNotifier {
   // Track visible videos
   final Set<String> _visibleVideoIds = {};
 
+  // Check if a specific video is currently playing
+  bool isVideoPlaying(String videoId) {
+    final controller = _controllers[videoId];
+    return controller != null &&
+        controller.value.isInitialized &&
+        controller.value.isPlaying;
+  }
+
+  // Play a specific video by ID
+  void playVideoById(String videoId) {
+    final controller = _controllers[videoId];
+    if (controller != null) {
+      playVideo(videoId, controller);
+    } else {
+      print("Cannot play video $videoId: controller not found");
+    }
+  }
+
+  // Pause a specific video by ID
+  void pauseVideo(String videoId) {
+    final controller = _controllers[videoId];
+    if (controller != null && controller.value.isInitialized && controller.value.isPlaying) {
+      controller.pause();
+      print("Paused video: $videoId");
+
+      // If this was the currently playing video, clear current ID
+      if (_currentlyPlayingId == videoId) {
+        _currentlyPlayingId = null;
+      }
+
+      notifyListeners();
+    }
+  }
+
   // Pause any previously playing videos and play the new one
   void playVideo(String videoId, VideoPlayerController controller) {
     print("Playing video: $videoId, muted: $_isMuted");

@@ -39,8 +39,8 @@ class HomeScreenController {
   late SubcategoryBloc _subcategoryBloc;
 
   // UI State
-  bool showSubcategoryGridView = false;
-  int _selectedCategory = 1;
+  bool showSubcategoryGridView = true;
+  int _selectedCategory = 8;
   List<CategoryMenu> _categories = [];
   bool isLoading = true;
   String currentLanguage = 'en';
@@ -52,7 +52,8 @@ class HomeScreenController {
   late Animation<double> _fadeAnimation;
   bool _disposed = false;
   bool _isPaginationInProgress = false;
-
+  bool _isFirstLaunch = true; // Add this flag
+  bool get isFirstLaunch => _isFirstLaunch;
   final Language language = Language();
 
   HomeScreenController({
@@ -163,6 +164,11 @@ class HomeScreenController {
         if (state.mounted) {
           state.setState(() {
             isLoading = false;
+
+            // Ensure category 8 remains selected if still on first launch
+            if (_isFirstLaunch) {
+              _selectedCategory = 8;
+            }
           });
 
           // Also ensure service posts are refreshed for the currently selected category
@@ -315,7 +321,6 @@ class HomeScreenController {
     ));
   }
 
-  // Handle force loading categories
   void _forceDirectCategoryLoading() {
     if (!state.mounted) return;
 
@@ -361,9 +366,9 @@ class HomeScreenController {
                 _categories = arrangedCategories;
                 isLoading = false;
 
-                // Auto-select first category if no category is selected
+                // Keep selection at 8 for first launch - only change if selection is invalid (0)
                 if (_selectedCategory == 0 && _categories.isNotEmpty) {
-                  _selectedCategory = _categories.first.id;
+                  _selectedCategory = 8; // Always default to 8, not first category
                 }
               });
 
@@ -397,21 +402,21 @@ class HomeScreenController {
         if (!loadedFromCache) {
           // Load categories directly from repository
           final categories =
-              await _categoryRepository.getCategoryMenu(forceRefresh: true);
+          await _categoryRepository.getCategoryMenu(forceRefresh: true);
 
           if (state.mounted && categories.isNotEmpty) {
             // Filter out suspended categories
             final activeCategories =
-                categories.where((category) => !category.isSuspended).toList();
+            categories.where((category) => !category.isSuspended).toList();
             final arrangedCategories = _arrangeCategories(activeCategories);
 
             state.setState(() {
               _categories = arrangedCategories;
               isLoading = false;
 
-              // Auto-select first category if no category is selected
+              // Keep selection at 8 for first launch - only change if selection is invalid (0)
               if (_selectedCategory == 0 && _categories.isNotEmpty) {
-                _selectedCategory = _categories.first.id;
+                _selectedCategory = 8; // Always default to 8, not first category
               }
             });
 
@@ -659,10 +664,10 @@ class HomeScreenController {
       ),
     );
 
-    // Load service posts for default category DIRECTLY FROM API
+    // Load service posts for category 8 explicitly
     _servicePostBloc.add(
       GetServicePostsByCategoryEvent(
-        _selectedCategory,
+        8, // Always use 8 on first load
         1,
         forceRefresh: true, // Force API fetch
       ),
@@ -701,7 +706,7 @@ class HomeScreenController {
     if (state.mounted) {
       state.setState(() {
         showSubcategoryGridView =
-            prefs.getBool('showSubcategoryGridView') ?? false;
+            prefs.getBool('showSubcategoryGridView') ?? true;
       });
     }
   }
@@ -738,6 +743,8 @@ class HomeScreenController {
         return Icons.miscellaneous_services_rounded;
       case 6:
         return Icons.location_on_rounded;
+      case 8:
+        return Icons.location_on_rounded;
       default:
         return Icons.work_outline_rounded;
     }
@@ -753,6 +760,13 @@ class HomeScreenController {
     if (_isPaginationInProgress && categoryId == _selectedCategory) {
       return;
     }
+
+    // Only mark first launch as complete if the user selects a category OTHER than 8
+    // This way we can still track if user has made an explicit selection
+    if (categoryId != 8) {
+      _isFirstLaunch = false;
+    }
+
     state.setState(() => _selectedCategory = categoryId);
 
     // Special handling for categories 6 and 0

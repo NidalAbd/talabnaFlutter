@@ -112,4 +112,45 @@ class Notifications {
         return Colors.black;
     }
   }
+
+}
+
+extension NotificationPostExtractor on Notifications {
+  // Extract post ID from notification message
+  int? extractPostId() {
+    try {
+      // Try to find a post ID in the message
+      String? messageText;
+
+      // Try both languages
+      if (message.containsKey('en')) {
+        messageText = message['en'];
+      } else if (message.containsKey('ar')) {
+        messageText = message['ar'];
+      }
+
+      // If no message found, return null
+      if (messageText == null || messageText.isEmpty) {
+        return null;
+      }
+
+      // Look for the post ID pattern [post_id:123]
+      final RegExp postIdRegex = RegExp(r'\[post_id:(\d+)\]');
+      final match = postIdRegex.firstMatch(messageText);
+
+      if (match != null && match.groupCount >= 1) {
+        return int.parse(match.group(1)!);
+      }
+
+      return null;
+    } catch (e) {
+      print('Error extracting post ID: $e');
+      return null;
+    }
+  }
+
+  // Check if notification is related to a post
+  bool isPostRelated() {
+    return type == 'post' || type == 'badge' || extractPostId() != null;
+  }
 }

@@ -13,7 +13,9 @@ class ServicePostInitial extends ServicePostState {}
 class ServicePostLoading extends ServicePostState {
   final String event;
 
-  const ServicePostLoading({required this.event});
+   ServicePostLoading({required this.event}) : super() {
+    print('this state is coming from this event $event');
+  }
 
   @override
   List<Object> get props => [event];
@@ -30,13 +32,15 @@ class ServicePostLoadSuccess extends ServicePostState {
   final bool? preloadOnly; // Added to support preloading
   final bool? dataSaverEnabled;
 
-  const ServicePostLoadSuccess({
+   ServicePostLoadSuccess({
     required this.servicePosts,
     required this.hasReachedMax,
     required this.event,
     this.preloadOnly = false, // Default to false
     this.dataSaverEnabled,
-  });
+  }) : super() {
+    print('the Service Post Load Success calling from this event : $event');
+  }
 
   ServicePostLoadSuccess copyWith({
     List<ServicePost>? servicePosts,
@@ -63,6 +67,7 @@ class ServicePostLoadSuccess extends ServicePostState {
     dataSaverEnabled ?? false,
   ];
 }
+
 
 class ServicePostFormLoadSuccess extends ServicePostState {
   final ServicePost? servicePost;

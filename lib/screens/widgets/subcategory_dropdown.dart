@@ -139,7 +139,7 @@ class _SubCategoriesDropdownState extends State<SubCategoriesDropdown> {
           children: [
             Text(
               _error!,
-              style: TextStyle(color: AppTheme.lightErrorColor),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
             TextButton(
               onPressed: () {
@@ -191,8 +191,7 @@ class _SubCategoriesDropdownState extends State<SubCategoriesDropdown> {
             );
           }).toList(),
           dropdownColor: isDarkMode
-              ? AppTheme.darkPrimaryColor
-              : AppTheme.lightPrimaryColor,
+              ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor,
           onChanged: (SubCategory? newSubCategory) {
             if (newSubCategory != null) {
               setState(() {

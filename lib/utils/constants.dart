@@ -1,6 +1,8 @@
+import '../main.dart';
+
 class Constants {
   // App name
-  static const String appName = "Talabna";
+  static const String appName = 'Talabna';
 
   // API base URL
   static const String apiBaseUrl = "https://talbna.cloud";
@@ -10,6 +12,7 @@ class Constants {
   // Social media API keys
   static const String googleApiKey = "YOUR_GOOGLE_API_KEY_HERE";
   static const String facebookApiKey = "YOUR_FACEBOOK_API_KEY_HERE";
+  static String version = appVersion;
 
   // Regular expressions
   static final RegExp emailRegExp =

@@ -1,35 +1,44 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart';
+
+import '../../app_theme.dart';
 
 class LikeButton extends StatefulWidget {
   final bool isFavorite;
   final int favoritesCount;
   final Future<bool> Function() onToggleFavorite;
   final double iconSize;
+  final double textSize; // Added custom text size parameter
   final Color likedColor;
-  final Color unlikedColor;
+  final Color? unlikedColor;
   final bool showBurstEffect;
-  final bool showCountOnRight; // Parameter to control count position
-  final bool showCount; // Parameter to control if count is shown
-  final String countText; // New parameter to show text with count
-  final bool showCountText; // New parameter to control if count text is shown
-  final Duration debounceTimeout; // New parameter to prevent quick toggling
+  final bool showCountOnRight;
+  final bool showCount;
+  final String countText;
+  final bool showCountText;
+  final Duration debounceTimeout;
+  final double buttonWidth; // Added custom button width
+  final double buttonHeight; // Added custom button height
 
   const LikeButton({
     super.key,
     required this.isFavorite,
     required this.favoritesCount,
     required this.onToggleFavorite,
-    this.iconSize = 25,
+    required this.iconSize,
+    this.textSize = 15, // Default text size
     this.likedColor = Colors.red,
-    this.unlikedColor = Colors.white,
+    this.unlikedColor,
     this.showBurstEffect = true,
-    this.showCountOnRight = false, // By default show count below (like Facebook mobile)
-    this.showCount = true, // By default show the count
-    this.countText = 'likes', // Default text to show with count
-    this.showCountText = false, // By default don't show text with count
-    this.debounceTimeout = const Duration(milliseconds: 500), // Debounce timeout
+    this.showCountOnRight = false,
+    this.showCount = true,
+    this.countText = 'likes',
+    this.showCountText = false,
+    this.debounceTimeout = const Duration(milliseconds: 500),
+    this.buttonWidth = 0, // 0 means auto-size
+    this.buttonHeight = 0, // 0 means auto-size
   });
 
   @override
@@ -92,6 +101,8 @@ class _LikeButtonState extends State<LikeButton>
 
     // Handle external state changes
     if (oldWidget.isFavorite != widget.isFavorite) {
+      debugPrint('🔄 LikeButton: External update - isFavorite changed from ${oldWidget.isFavorite} to ${widget.isFavorite}');
+
       setState(() {
         _isFavorite = widget.isFavorite;
       });
@@ -100,13 +111,17 @@ class _LikeButtonState extends State<LikeButton>
       if (!_isProcessing) {
         if (_isFavorite) {
           _animationController.forward(from: 0.0);
+          debugPrint('▶️ LikeButton: External animation - forward');
         } else {
           _animationController.reverse(from: 1.0);
+          debugPrint('◀️ LikeButton: External animation - reverse');
         }
       }
     }
 
     if (oldWidget.favoritesCount != widget.favoritesCount) {
+      debugPrint('🔄 LikeButton: External update - count changed from ${oldWidget.favoritesCount} to ${widget.favoritesCount}');
+
       setState(() {
         _favoritesCount = widget.favoritesCount;
       });
@@ -129,10 +144,12 @@ class _LikeButtonState extends State<LikeButton>
     });
 
     try {
-      // Optimistically update UI immediately for better responsiveness
+      // Save the current state before toggling
       final wasLiked = _isFavorite;
+
+      // Optimistically update UI immediately for better responsiveness
       setState(() {
-        _isFavorite = !_isFavorite;
+        _isFavorite = !wasLiked;
         _favoritesCount += _isFavorite ? 1 : -1;
       });
 
@@ -144,21 +161,34 @@ class _LikeButtonState extends State<LikeButton>
       }
 
       // Call the toggle favorite function provided by the parent
-      final success = await widget.onToggleFavorite();
+      // This returns the NEW state, not a success/failure indicator
+      final newState = await widget.onToggleFavorite();
 
-      // If failed, revert the state
-      if (!success) {
+      // Update to match the server state
+      if (_isFavorite != newState) {
+        // Server returned a different state than we expected
         setState(() {
-          _isFavorite = wasLiked;
-          _favoritesCount += _isFavorite ? 1 : -1;
+          // Update favorite state to match server
+          _isFavorite = newState;
+          // Adjust count based on the new state
+          _favoritesCount = widget.favoritesCount;
+
+          // Update animation to match
+          if (_isFavorite) {
+            _animationController.forward(from: 0.0);
+          } else {
+            _animationController.reverse(from: 1.0);
+          }
         });
       }
     } catch (e) {
-      // Handle errors and revert state
+      // Log the error
       debugPrint('Like toggle failed: $e');
+
+      // In case of error, revert to the original state from widget props
       setState(() {
-        _isFavorite = !_isFavorite;
-        _favoritesCount += _isFavorite ? 1 : -1;
+        _isFavorite = widget.isFavorite;
+        _favoritesCount = widget.favoritesCount;
       });
     } finally {
       // Add a small delay before allowing another toggle
@@ -171,7 +201,6 @@ class _LikeButtonState extends State<LikeButton>
       });
     }
   }
-
   @override
   void dispose() {
     _animationController.dispose();
@@ -185,7 +214,7 @@ class _LikeButtonState extends State<LikeButton>
   }
 
   // Heart icon builder with animation
-  Widget _buildHeartIcon() {
+  Widget _buildHeartIcon(Color unlikedColor) {
     return AnimatedBuilder(
       animation: _animationController,
       builder: (context, child) {
@@ -212,7 +241,7 @@ class _LikeButtonState extends State<LikeButton>
                 child: Icon(
                   _isFavorite ? Icons.favorite : Icons.favorite_border,
                   size: widget.iconSize,
-                  color: _isFavorite ? widget.likedColor : widget.unlikedColor,
+                  color: _isFavorite ? widget.likedColor : unlikedColor,
                 ),
               ),
             ],
@@ -222,8 +251,7 @@ class _LikeButtonState extends State<LikeButton>
     );
   }
 
-  // Count text with animation
-  Widget _buildCountText() {
+  Widget _buildCountText(Color unlikedColor) {
     if (!widget.showCount) return const SizedBox.shrink();
 
     final countString = _formatCount(_favoritesCount);
@@ -251,8 +279,8 @@ class _LikeButtonState extends State<LikeButton>
         displayText,
         key: ValueKey<String>(displayText),
         style: TextStyle(
-          color: _isFavorite ? widget.likedColor : widget.unlikedColor,
-          fontSize: widget.iconSize * 0.6,
+          color: _isFavorite ? widget.likedColor : unlikedColor,
+          fontSize: widget.textSize, // Use the custom text size
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -261,33 +289,55 @@ class _LikeButtonState extends State<LikeButton>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final effectiveUnlikedColor = widget.unlikedColor ?? theme.iconTheme.color;
+
+    // Create base content depending on orientation
+    Widget content;
+
     // Horizontal layout (count on right)
     if (widget.showCountOnRight) {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _buildHeartIcon(effectiveUnlikedColor!),
+          const SizedBox(width: 4),
+          _buildCountText(effectiveUnlikedColor),
+        ],
+      );
+    } else {
+      // Vertical layout (count below)
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHeartIcon(effectiveUnlikedColor!),
+          const SizedBox(height: 4),
+          _buildCountText(effectiveUnlikedColor),
+        ],
+      );
+    }
+
+    // Apply custom sizing if specified
+    if (widget.buttonWidth > 0 || widget.buttonHeight > 0) {
+      final effectiveWidth = widget.buttonWidth > 0 ? widget.buttonWidth : null;
+      final effectiveHeight = widget.buttonHeight > 0 ? widget.buttonHeight : null;
+
       return GestureDetector(
         onTap: _handleLikeToggle,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _buildHeartIcon(),
-            const SizedBox(width: 4),
-            _buildCountText(),
-          ],
+        child: Container(
+          width: effectiveWidth,
+          height: effectiveHeight,
+          alignment: Alignment.center,
+          child: content,
         ),
       );
     }
 
-    // Vertical layout (count below)
+    // Default sizing (auto)
     return GestureDetector(
       onTap: _handleLikeToggle,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildHeartIcon(),
-          const SizedBox(height: 4),
-          _buildCountText(),
-        ],
-      ),
+      child: content,
     );
   }
 }

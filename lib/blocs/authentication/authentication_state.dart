@@ -1,6 +1,7 @@
-import 'package:equatable/equatable.dart';
+// lib/blocs/authentication/authentication_state.dart
 
-import '../../screens/check_auth.dart';
+import 'package:equatable/equatable.dart';
+import 'package:talabna/screens/check_auth.dart';
 
 abstract class AuthenticationState extends Equatable {
   const AuthenticationState();
@@ -17,70 +18,35 @@ class AuthenticationSuccess extends AuthenticationState {
   final int? userId;
   final String? token;
   final String authType;
-  final bool isNewUser;
   final bool dataSaverEnabled;
+  final bool isNewUser;
 
   const AuthenticationSuccess({
-    required this.userId,
-    required this.token,
+    this.userId,
+    this.token,
     this.authType = 'email',
-    this.isNewUser = false,
     this.dataSaverEnabled = false,
+    this.isNewUser = false,
   });
 
   @override
-  List<Object?> get props =>
-      [userId, token, authType, isNewUser, dataSaverEnabled];
+  List<Object?> get props => [userId, token, authType, dataSaverEnabled, isNewUser];
 
-  // Add a copyWith method for easy state updates
   AuthenticationSuccess copyWith({
     int? userId,
     String? token,
     String? authType,
-    bool? isNewUser,
     bool? dataSaverEnabled,
+    bool? isNewUser,
   }) {
     return AuthenticationSuccess(
       userId: userId ?? this.userId,
       token: token ?? this.token,
       authType: authType ?? this.authType,
-      isNewUser: isNewUser ?? this.isNewUser,
       dataSaverEnabled: dataSaverEnabled ?? this.dataSaverEnabled,
+      isNewUser: isNewUser ?? this.isNewUser,
     );
   }
-}
-
-class DataSaverToggled extends AuthenticationSuccess {
-  final bool isEnabled;
-
-  const DataSaverToggled({
-    required this.isEnabled,
-    required super.userId,
-    required super.token,
-    required super.authType,
-    super.isNewUser,
-  }) : super(
-          dataSaverEnabled: isEnabled,
-        );
-
-  @override
-  List<Object?> get props => [userId, token, authType, isEnabled];
-}
-
-class DataSaverToggleFailure extends AuthenticationSuccess {
-  final String error;
-
-  const DataSaverToggleFailure({
-    required this.error,
-    required super.userId,
-    required super.token,
-    required super.authType,
-    super.isNewUser,
-    super.dataSaverEnabled,
-  });
-
-  @override
-  List<Object?> get props => [userId, token, authType, error];
 }
 
 class AuthenticationFailure extends AuthenticationState {
@@ -93,7 +59,46 @@ class AuthenticationFailure extends AuthenticationState {
   });
 
   @override
-  List<Object> get props => [error, errorType];
+  List<Object?> get props => [error, errorType];
+}
+
+class DataSaverToggled extends AuthenticationSuccess {
+  final bool isEnabled;
+
+  const DataSaverToggled({
+    required this.isEnabled,
+    int? userId,
+    String? token,
+    String? authType,
+  }) : super(
+    userId: userId,
+    token: token,
+    authType: authType ?? 'email',
+    dataSaverEnabled: isEnabled,
+  );
+
+  @override
+  List<Object?> get props => [isEnabled, userId, token, authType, dataSaverEnabled];
+}
+
+class DataSaverToggleFailure extends AuthenticationSuccess {
+  final String error;
+
+  const DataSaverToggleFailure({
+    required this.error,
+    int? userId,
+    String? token,
+    String? authType,
+    bool dataSaverEnabled = false,
+  }) : super(
+    userId: userId,
+    token: token,
+    authType: authType ?? 'email',
+    dataSaverEnabled: dataSaverEnabled,
+  );
+
+  @override
+  List<Object?> get props => [error, userId, token, authType, dataSaverEnabled];
 }
 
 class ForgotPasswordSuccess extends AuthenticationState {
@@ -104,5 +109,17 @@ class ForgotPasswordSuccess extends AuthenticationState {
   });
 
   @override
-  List<Object> get props => [message];
+  List<Object?> get props => [message];
+}
+
+// New state for banned users
+class AuthenticationBanned extends AuthenticationState {
+  final String? banReason;
+
+  const AuthenticationBanned({
+    this.banReason,
+  });
+
+  @override
+  List<Object?> get props => [banReason];
 }

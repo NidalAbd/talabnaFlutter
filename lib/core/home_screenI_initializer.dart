@@ -16,6 +16,7 @@ class HomeScreenInitializer {
   final BuildContext context;
   bool _isDisposed = false;
   bool _initialized = false;
+  Map<int, DateTime> _lastCategoryRefreshTimes = {};
 
   // Track initialization state
   static bool _categoriesPreloaded = false;

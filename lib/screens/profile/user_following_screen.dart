@@ -12,11 +12,16 @@ import 'package:talabna/screens/profile/user_card.dart';
 import '../widgets/shimmer_widgets.dart';
 
 class UserFollowingScreen extends StatefulWidget {
-  const UserFollowingScreen(
-      {super.key, required this.userID, required this.user});
+  const UserFollowingScreen({
+    super.key,
+    required this.userID,
+    required this.user,
+    this.primary = true,
+  });
 
   final int userID;
   final User user;
+  final bool primary;
 
   @override
   UserFollowingScreenState createState() => UserFollowingScreenState();
@@ -25,7 +30,7 @@ class UserFollowingScreen extends StatefulWidget {
 class UserFollowingScreenState extends State<UserFollowingScreen>
     with AutomaticKeepAliveClientMixin {
   final Language _language = Language();
-  final ScrollController _scrollController = ScrollController();
+  ScrollController? _scrollController;
   late UserFollowBloc _userFollowBloc;
   late UserActionBloc _userActionBloc;
 
@@ -41,7 +46,13 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+
+    // Only create a controller if primary is false
+    if (!widget.primary) {
+      _scrollController = ScrollController();
+      _scrollController!.addListener(_onScroll);
+    }
+
     _userFollowBloc = context.read<UserFollowBloc>();
     _userActionBloc = context.read<UserActionBloc>();
     _fetchFollowing();
@@ -57,8 +68,10 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    if (_scrollController != null) {
+      _scrollController!.removeListener(_onScroll);
+      _scrollController!.dispose();
+    }
     _following.clear();
     super.dispose();
   }
@@ -66,10 +79,11 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
   void _onScroll() {
     if (!_isLoading &&
         !_hasReachedMax &&
-        _scrollController.hasClients &&
-        _scrollController.offset >=
-            _scrollController.position.maxScrollExtent - 200 &&
-        !_scrollController.position.outOfRange) {
+        _scrollController != null &&
+        _scrollController!.hasClients &&
+        _scrollController!.offset >=
+            _scrollController!.position.maxScrollExtent - 200 &&
+        !_scrollController!.position.outOfRange) {
       _handleLoadMore();
     }
   }
@@ -92,8 +106,10 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
   }
 
   Future<bool> _onWillPop() async {
-    if (_scrollController.hasClients && _scrollController.position.pixels > 0) {
-      _scrollController.animateTo(
+    if (_scrollController != null &&
+        _scrollController!.hasClients &&
+        _scrollController!.position.pixels > 0) {
+      _scrollController!.animateTo(
         0.0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInToLinear,
@@ -142,7 +158,9 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
                     ? AppTheme.darkSecondaryColor
                     : AppTheme.lightPrimaryColor,
                 child: ListView.builder(
-                  controller: _scrollController,
+                  // Only set controller when primary is false
+                  controller: widget.primary ? null : _scrollController,
+                  primary: widget.primary,
                   padding: const EdgeInsets.only(top: 8, bottom: 16),
                   physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: _hasReachedMax
@@ -155,9 +173,9 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: CircularProgressIndicator(
                             color:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? AppTheme.darkSecondaryColor
-                                    : AppTheme.lightPrimaryColor,
+                            Theme.of(context).brightness == Brightness.dark
+                                ? AppTheme.darkSecondaryColor
+                                : AppTheme.lightPrimaryColor,
                             strokeWidth: 3,
                           ),
                         ),
@@ -205,7 +223,9 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
                     ? AppTheme.darkSecondaryColor
                     : AppTheme.lightPrimaryColor,
                 child: ListView(
-                  controller: _scrollController,
+                  // Only set controller when primary is false
+                  controller: widget.primary ? null : _scrollController,
+                  primary: widget.primary,
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
                     SizedBox(height: MediaQuery.of(context).size.height / 4),
@@ -233,7 +253,7 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
                               Icons.diversity_3_outlined,
                               size: 48,
                               color: Theme.of(context).brightness ==
-                                      Brightness.dark
+                                  Brightness.dark
                                   ? AppTheme.darkSecondaryColor
                                   : AppTheme.lightPrimaryColor,
                             ),
@@ -248,7 +268,7 @@ class UserFollowingScreenState extends State<UserFollowingScreen>
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
                               color:
-                                  Theme.of(context).textTheme.bodyLarge?.color,
+                              Theme.of(context).textTheme.bodyLarge?.color,
                             ),
                           ),
                           const SizedBox(height: 12),

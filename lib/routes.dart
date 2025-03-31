@@ -15,15 +15,19 @@ import 'package:talabna/data/models/service_post.dart';
 import 'package:talabna/screens/auth/login_screen_new.dart';
 import 'package:talabna/screens/auth/register_screen_new.dart';
 import 'package:talabna/screens/auth/reset_password.dart';
+import 'package:talabna/screens/banned_screen.dart';
 import 'package:talabna/screens/home/home_screen.dart';
 import 'package:talabna/screens/home/select_language.dart';
 import 'package:talabna/screens/reel/reels_screen.dart';
 import 'package:talabna/screens/reel/reels_state_manager.dart';
 import 'package:talabna/screens/service_post/service_post_view.dart';
+import 'package:talabna/services/service_post_deep_link_handler.dart';
 import 'package:talabna/utils/debug_logger.dart';
 import 'package:talabna/utils/deep_link_diagnostics.dart';
 
 import 'core/deep_link_service.dart';
+import 'core/navigation_service.dart';
+import 'core/service_locator.dart';
 import 'data/models/user.dart';
 
 class Routes {
@@ -36,6 +40,7 @@ class Routes {
   static const String resetPassword = '/reset-password';
   static const String servicePost = '/service-post';
   static const String reels = '/reels';
+  static const String banned = '/banned';
 
   // Navigation state management
   static bool _isNavigating = false;
@@ -43,6 +48,7 @@ class Routes {
   static Timer? _cleanupTimer;
   static final Set<String> _activeRoutes = {};
   static const int _navigationDebounceTime = 200; // ms
+  static Map<String, dynamic>? _initialRouteArgs;
 
   // Reset navigation state
   static void resetNavigationState() {
@@ -184,16 +190,28 @@ class Routes {
       return _errorRoute('Error handling URL: ${settings.name}');
     }
   }
+  static void setInitialRouteArgs(Map<String, dynamic> args) {
+    _initialRouteArgs = args;
+    DebugLogger.log('Initial route args set: $args', category: 'NAVIGATION');
+  }
+// Method to get and clear initial route arguments
+  static Map<String, dynamic>? getAndClearInitialRouteArgs() {
+    final args = _initialRouteArgs;
+    _initialRouteArgs = null;
+    return args;
+  }
 
   // Main route generator
   static Route<dynamic> generateRoute(RouteSettings settings) {
     DeepLinkDiagnostics().addEvent('Route requested', details: 'Name: ${settings.name}');
 
     DebugLogger.log('Routing to: ${settings.name}', category: 'NAVIGATION');
-
-    final args = settings.arguments as Map<String, dynamic>?;
-    if (args != null) {
-      DebugLogger.log('Route args: $args', category: 'NAVIGATION');
+    Map<String, dynamic>? args = settings.arguments as Map<String, dynamic>?;
+    if (args == null &&
+        (settings.name == Routes.reels || settings.name == Routes.servicePost) &&
+        _initialRouteArgs != null) {
+      args = getAndClearInitialRouteArgs();
+      DebugLogger.log('Using stored initial route args: $args', category: 'NAVIGATION');
     }
 
     try {
@@ -314,16 +332,36 @@ class Routes {
             return _createRoute(const ResetPasswordScreen(), settings);
 
           case servicePost:
+            final Map<String, dynamic>? args = settings.arguments as Map<String, dynamic>?;
             final postId = args?['postId'] as String?;
+            final fromNotification = args?['fromNotification'] as bool? ?? false;
+
             if (postId == null) {
               _isNavigating = wasNavigating;
               return _createRoute(const HomeScreen(userId: 0), settings);
             }
 
-            // Check navigation debounce
+            // Check if already navigating to this post - prevent duplicates
             if (!shouldAllowNavigation('service-post', postId)) {
               _isNavigating = wasNavigating;
               return _createEmptyRoute(settings);
+            }
+
+            // If coming from notification, add special logging
+            if (fromNotification) {
+              DebugLogger.log(
+                  'Handling service post from notification: $postId',
+                  category: 'NAVIGATION'
+              );
+
+              // Track this navigation with a unique source ID to improve analytics
+              _navigationTimestamps['notification-post-$postId'] = DateTime.now();
+              _activeRoutes.add('notification-post-$postId');
+
+              // Auto cleanup after delay
+              Timer(Duration(seconds: 10), () {
+                _activeRoutes.remove('notification-post-$postId');
+              });
             }
 
             _isNavigating = wasNavigating;
@@ -345,6 +383,16 @@ class Routes {
             _isNavigating = wasNavigating;
             return _handleReelsRoute(args);
 
+          case banned:
+            final Map<String, dynamic>? args = settings.arguments as Map<String, dynamic>?;
+            final banReason = args?['banReason'] as String?;
+            return _createRoute(
+              BannedScreen(
+                banReason: banReason,
+              ),
+              settings,
+            );
+
           default:
             _isNavigating = wasNavigating;
             return _errorRoute('Route not found: ${settings.name}');
@@ -363,6 +411,7 @@ class Routes {
   }
 
   // Handle reels route
+// Updated _handleReelsRoute with proper app initialization
   static Route<dynamic> _handleReelsRoute(Map<String, dynamic>? args) {
     final postId = args?['postId'] as String?;
     final userId = args?['userId'] as int?;
@@ -390,7 +439,7 @@ class Routes {
 
     // Use a unique route key for deep links
     final routeKey =
-        isFromDeepLink ? 'reels-deeplink-$postId' : 'reels-$postId';
+    isFromDeepLink ? 'reels-deeplink-$postId' : 'reels-$postId';
 
     // Track this navigation attempt
     _navigationTimestamps[routeKey] = DateTime.now();
@@ -419,7 +468,7 @@ class Routes {
       });
     }
 
-    // Get the userId safely - first from args, then from SharedPreferences
+    // Define the getUserId method here as a local function
     Future<int> getUserId(BuildContext context) async {
       if (userId != null) {
         return userId;
@@ -428,7 +477,7 @@ class Routes {
       // Try to get from authentication state
       if (context.read<AuthenticationBloc>().state is AuthenticationSuccess) {
         final authState =
-            context.read<AuthenticationBloc>().state as AuthenticationSuccess;
+        context.read<AuthenticationBloc>().state as AuthenticationSuccess;
         if (authState.userId != null) {
           return authState.userId!;
         }
@@ -445,11 +494,30 @@ class Routes {
       return 0;
     }
 
-    // Create a unified MaterialPageRoute for all reel navigation
+    // Create a unified MaterialPageRoute for all reel navigation with WillPopScope
     return MaterialPageRoute(
       settings: RouteSettings(name: reels, arguments: args),
       maintainState: true,
       builder: (context) {
+        // **NEW** Ensure proper app initialization for deep links
+        if (isFromDeepLink) {
+          SharedPreferences.getInstance().then((prefs) {
+            // Check if this is coming from a cold start deep link
+            final isOpeningFromDeepLink = prefs.getBool('opening_from_deep_link') ?? false;
+
+            if (isOpeningFromDeepLink) {
+              // Ensure the app knows we're in a deep link flow
+              final navigationService = serviceLocator<NavigationService>();
+              navigationService.setOpeningFromDeepLink(true);
+
+              // Make sure we set up a proper navigation stack with home as the base
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                navigationService.setupDeepLinkNavigationStack();
+              });
+            }
+          });
+        }
+
         // Initialize data in background
         Future.microtask(() async {
           try {
@@ -468,7 +536,7 @@ class Routes {
                 final posts = (servicePostBloc.state as ServicePostLoadSuccess)
                     .servicePosts;
                 final exists =
-                    posts.any((post) => post.id == int.parse(postId));
+                posts.any((post) => post.id == int.parse(postId));
                 needsLoading = !exists;
               } catch (e) {
                 DebugLogger.log('Error checking existing post: $e',
@@ -523,152 +591,265 @@ class Routes {
         // Initialize ReelStateManager for tracking
         ReelsStateManager().markReelActive(postId);
 
-        // Return the ReelsHomeScreen
-        return ReelsHomeScreen(
-          userId: userId ?? (existingUser?.id ?? 0),
-          servicePost: existingPost,
-          user: existingUser ?? User(id: 0, name: '', userName: '', email: ''),
-          // Minimal user data
-          postId: postId,
+        // Make sure we have a valid navigation home path
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Create a home route that we can navigate back to
+          final navigationService = serviceLocator<NavigationService>();
+          navigationService.setRouteHistory('home', {'userId': userId ?? 0});
+        });
+
+        // Return the ReelsHomeScreen with WillPopScope at the root
+        return WillPopScope(
+          onWillPop: () async {
+            // Handle back button press
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return false;
+            } else {
+              // If there's no route to pop to, go to home
+              SharedPreferences.getInstance().then((prefs) {
+                final userId = prefs.getInt('userId') ?? 0;
+
+                // Clear deep link flags when leaving reel screen
+                prefs.remove('opening_from_deep_link');
+                prefs.remove('direct_deeplink_active');
+
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  Routes.home,
+                      (route) => false,
+                  arguments: {'userId': userId},
+                );
+              });
+              return false;
+            }
+          },
+          child: ReelsHomeScreen(
+            userId: userId ?? (existingUser?.id ?? 0),
+            servicePost: existingPost,
+            user: existingUser ?? User(id: 0, name: '', userName: '', email: ''),
+            postId: postId,
+          ),
         );
       },
     );
   }
 
-  // Handle service post route
+  // Update the _handleServicePostRoute method in your Routes class
+  // Update this part in the _handleServicePostRoute method
+
   static Route<dynamic> _handleServicePostRoute(Map<String, dynamic>? args) {
     final postId = args?['postId'] as String?;
+    final isFromDeepLink = args?['fromDeepLink'] as bool? ?? false;
+    final isFromNotification = args?['fromNotification'] as bool? ?? false;
+
     if (postId == null) {
       return _errorRoute('postId is required for ServicePost route');
     }
+
 
     // Ensure postId is numeric
     if (!_isNumeric(postId)) {
       return _errorRoute('Invalid postId format');
     }
 
-    // Track active route
-    String routeId = 'service-post-$postId';
-    _activeRoutes.add(routeId);
+    // Track the source for better navigation management
+    final String routeSource = isFromNotification ? 'notification' :
+    isFromDeepLink ? 'deeplink' : 'normal';
 
-    // Auto-cleanup
-    Timer(Duration(seconds: 10), () {
-      _activeRoutes.remove(routeId);
-    });
+    // Create a unique ID for this navigation attempt
+    final String navId = '$routeSource-$postId';
 
-    DebugLogger.log('Creating route for SERVICE POST: $postId',
-        category: 'NAVIGATION');
+    // Check if already navigating to this service post
+    if (!shouldAllowNavigation('service-post', navId)) {
+      DebugLogger.log('Already navigating to service post: $postId from $routeSource',
+          category: 'NAVIGATION');
+      return _createEmptyRoute(RouteSettings(name: servicePost, arguments: args));
+    }
 
-    // Create page route
-    return PageRouteBuilder(
-      settings: RouteSettings(name: servicePost, arguments: args),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        // Check for invalid links
-        SharedPreferences.getInstance().then((prefs) {
-          final invalidLinks = prefs.getStringList('invalid_deep_links') ?? [];
-          if (invalidLinks.contains('service-post/$postId')) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Post #$postId not available')));
-              Future.delayed(Duration(milliseconds: 100), () {
-                if (context.mounted && Navigator.canPop(context)) {
-                  Navigator.of(context).pop();
-                }
-              });
-            }
-            return;
+    // Return a PageRouteBuilder that will handle the service post loading
+    return MaterialPageRoute(
+        settings: RouteSettings(name: servicePost, arguments: args),
+        builder: (context) {
+          // Preload data
+          final servicePostBloc = context.read<ServicePostBloc>();
+          servicePostBloc.add(GetServicePostByIdEvent(
+            int.parse(postId),
+            forceRefresh: true,
+          ));
+
+          // Create back handler
+          VoidCallback backHandler;
+          if (isFromNotification) {
+            backHandler = () {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                '/notifications',
+                    (route) => false,
+                arguments: {'userID': _getUserIdFromContext(context)},
+              );
+            };
+          } else if (isFromDeepLink) {
+            backHandler = () {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                home,
+                    (route) => false,
+                arguments: {'userId': _getUserIdFromContext(context)},
+              );
+            };
+          } else {
+            backHandler = () {
+              Navigator.of(context).pop();
+            };
           }
 
-          // Load service post
-          context.read<ServicePostBloc>().add(GetServicePostByIdEvent(
-                int.parse(postId),
-                forceRefresh: false,
-              ));
+          // Return the service post wrapper with WillPopScope
+          return WillPopScope(
+            onWillPop: () async {
+              backHandler();
+              return false;
+            },
+            child: BlocBuilder<ServicePostBloc, ServicePostState>(
+              builder: (context, state) {
 
-          // Check authentication
-          final token = prefs.getString('auth_token');
-          final userId = prefs.getInt('userId');
-          if (token == null || token.isEmpty || userId == null) {
-            // Store deep link and navigate to login
-            DeepLinkService().storePendingDeepLink(
-                DeepLinkService.TYPE_SERVICE_POST, postId);
-            Future.delayed(Duration(milliseconds: 100), () {
-              if (context.mounted) {
-                Navigator.of(context).pushReplacementNamed(Routes.login);
-              }
-            });
-            return;
-          }
-
-          // Load user profile
-          context.read<UserProfileBloc>().add(UserProfileRequested(id: userId));
-        });
-
-        // Clear any pending deep links
-        DeepLinkService().clearPendingDeepLinks();
-
-        // Return the ServicePostView with error handling
-        return BlocConsumer<ServicePostBloc, ServicePostState>(
-          listener: (context, state) {
-            if (state is ServicePostLoadFailure) {
-              _handlePostLoadFailure(context, postId);
-            }
-          },
-          builder: (context, servicePostState) {
-            return BlocBuilder<UserProfileBloc, UserProfileState>(
-              builder: (context, userProfileState) {
-                // Success state - both loaded
-                if (servicePostState is ServicePostLoadSuccess &&
-                    userProfileState is UserProfileLoadSuccess) {
-                  ServicePost? servicePost;
+                if (state is ServicePostLoadSuccess) {
+                  ServicePost? post;
                   try {
-                    servicePost = servicePostState.servicePosts
-                        .firstWhere((post) => post.id == int.parse(postId));
-                  } catch (_) {
-                    // Post not found
-                    servicePost = null;
+                    post = state.servicePosts.firstWhere(
+                          (p) => p.id == int.parse(postId),
+                    );
+                  } catch (e) {
+                    post = null;
                   }
 
-                  if (servicePost != null) {
-                    DebugLogger.log('Successfully loaded service post: $postId',
-                        category: 'NAVIGATION');
+                  if (post != null) {
+                    final userProfileBloc = context.read<UserProfileBloc>();
+                    final userState = userProfileBloc.state;
+                    User user;
 
-                    return ServicePostCardView(
-                      userProfileId: userProfileState.user.id,
-                      servicePost: servicePost,
-                      canViewProfile: true,
-                      user: userProfileState.user,
-                      onPostDeleted: () {
-                        if (context.mounted) Navigator.of(context).pop();
-                      },
+                    if (userState is UserProfileLoadSuccess) {
+                      user = userState.user;
+                    } else {
+                      user = User(id: _getUserIdFromContext(context), name: '', userName: '', email: '');
+                    }
+
+                    return Scaffold(
+                      appBar: AppBar(
+                        title: Text(post.title ?? 'Service Post'),
+                        leading: IconButton(
+                          icon: Icon(Icons.arrow_back),
+                          onPressed: backHandler,
+                        ),
+                      ),
+                      body: ServicePostCardView(
+                        userProfileId: user.id,
+                        servicePost: post,
+                        canViewProfile: true,
+                        user: user,
+                        onPostDeleted: backHandler,
+                        isFromDeepLink: isFromDeepLink,
+                        noAppBar: true,
+                      ),
                     );
                   }
-
-                  // Post not found
-                  return _buildPostNotFoundScreen(context, 'Post');
                 }
 
                 // Loading state
                 return Scaffold(
                   appBar: AppBar(
-                    title: Text('Loading Post...'),
+                    title: Text('Loading Post'),
                     leading: IconButton(
                       icon: Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: backHandler,
                     ),
                   ),
-                  body: Center(child: CircularProgressIndicator()),
+                  body: Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 );
               },
-            );
-          },
-        );
-      },
-      transitionDuration: const Duration(milliseconds: 100),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+            ),
+          );
+        }
     );
+  }
+
+// Helper function to get userId from context
+  static int _getUserIdFromContext(BuildContext context) {
+    try {
+      // Try to get from authentication bloc
+      final authState = context.read<AuthenticationBloc>().state;
+      if (authState is AuthenticationSuccess && authState.userId != null) {
+        return authState.userId!;
+      }
+
+      // Try to get from user profile bloc
+      final userProfileState = context.read<UserProfileBloc>().state;
+      if (userProfileState is UserProfileLoadSuccess) {
+        return userProfileState.user.id;
+      }
+    } catch (e) {
+      DebugLogger.log('Error getting user ID: $e', category: 'NAVIGATION');
+    }
+
+    // Default fallback
+    return 0;
+  }
+  // Helper to navigate to home from deep link
+  static void _navigateToHomeFromDeepLink(BuildContext context, SharedPreferences? prefs) {
+    if (context.mounted) {
+      try {
+        int userId = 0;
+
+        // Try to get userId from various sources
+        if (prefs != null) {
+          userId = prefs.getInt('userId') ?? 0;
+        }
+
+        if (userId == 0) {
+          // Try to get from authentication bloc
+          final authState = BlocProvider.of<AuthenticationBloc>(context).state;
+          if (authState is AuthenticationSuccess && authState.userId != null) {
+            userId = authState.userId!;
+          }
+        }
+
+        if (userId == 0) {
+          // Try to get from navigation service history
+          final navigationService = serviceLocator<NavigationService>();
+          if (navigationService.hasRouteInHistory('home')) {
+            final args = navigationService.getRouteHistoryArgs('home');
+            userId = args?['userId'] as int? ?? 0;
+          }
+        }
+
+        // If we have a userId, navigate to home
+        if (userId > 0) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+              Routes.home,
+                  (route) => false,
+              arguments: {'userId': userId}
+          );
+          DebugLogger.log('Navigated to home with userId: $userId from deep link',
+              category: 'NAVIGATION');
+        } else {
+          // As a last resort, just try to go to login
+          Navigator.of(context).pushNamedAndRemoveUntil(
+              Routes.login,
+                  (route) => false
+          );
+          DebugLogger.log('Navigated to login from deep link (no userId found)',
+              category: 'NAVIGATION');
+        }
+      } catch (e) {
+        DebugLogger.log('Error navigating to home from deep link: $e',
+            category: 'NAVIGATION_ERROR');
+
+        // As a last resort, just try to go to login
+        Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.login,
+                (route) => false
+        );
+      }
+    }
   }
 
   // Handle home route
@@ -729,12 +910,21 @@ class Routes {
       ),
     );
   }
+// In Routes class
+  static bool _openingFromDeepLink = false;
 
+  static void setOpeningFromDeepLink(bool value) {
+    _openingFromDeepLink = value;
+    DebugLogger.log('Routes openingFromDeepLink set to: $value',
+        category: 'NAVIGATION');
+  }
+
+  static bool get isOpeningFromDeepLink => _openingFromDeepLink;
   // Handle post load failures
   static void _handlePostLoadFailure(BuildContext context, String postId,
       {bool isReel = false}) {
     final linkType =
-        isReel ? DeepLinkService.TYPE_REELS : DeepLinkService.TYPE_SERVICE_POST;
+    isReel ? DeepLinkService.TYPE_REELS : DeepLinkService.TYPE_SERVICE_POST;
 
     // Mark as invalid to prevent future attempts
     SharedPreferences.getInstance().then((prefs) {
@@ -821,7 +1011,7 @@ class Routes {
 
     Navigator.of(context).pushNamedAndRemoveUntil(
       home,
-      (route) => false,
+          (route) => false,
       arguments: {'userId': userId},
     );
   }

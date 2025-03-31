@@ -143,23 +143,30 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
       });
     }
   }
-  // Handle video tap to open reels if needed
   void _handleVideoTap(String url) {
-    // If we're already in reels mode, just toggle play/pause
+    // Add debugging print statements
+    print("_handleVideoTap called with URL: $url");
+    print("isReelsMode: ${widget.isReelsMode}");
+    print("onVideoReelsTap is null: ${widget.onVideoReelsTap == null}");
+
+    // If we're already in reels mode, do nothing
     if (widget.isReelsMode) {
-      return; // The tap will be handled by the video player itself
+      print("Already in reels mode, ignoring tap");
+      return;
     }
 
-    // Otherwise, if we have a callback to open in reels mode, use it
+    // If we have a callback to open in reels mode, use it
     if (widget.onVideoReelsTap != null) {
       // Pause current video
+      print("Pausing all videos and calling onVideoReelsTap");
       _pauseAllVideos();
 
       // Call the callback with the URL to open in reels mode
       widget.onVideoReelsTap!(url);
+    } else {
+      print("onVideoReelsTap callback is null, cannot open reels");
     }
   }
-
   // Updated build method to move page indicator
   @override
   Widget build(BuildContext context) {
@@ -262,7 +269,6 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
     );
   }
 
-  // Updated _buildVideoItem method for ImageGrid
   Widget _buildVideoItem(String url, String videoId, double height, double width, int index) {
     if (widget.isReelsMode) {
       // In reels mode, just show the video player
@@ -276,23 +282,63 @@ class _ImageGridState extends State<ImageGrid> with RouteAware {
         autoPlay: widget.autoPlayVideos && _currentIndex == index && _isVisible && !_isPaused,
         borderRadius: BorderRadius.zero,
         isReelsMode: true,
+        disablePlayPause: true,
       );
     } else {
-      // In regular mode, provide the reels button callback
-      return FeedVideoPlayerWrapper(
-        url: '${Constants.apiBaseUrl}/$url',
-        videoId: videoId,
-        maxHeight: height,
-        maxWidth: width,
-        feedController: _videoFeedController,
-        onVideoEnd: _handleVideoEnd,
-        autoPlay: widget.autoPlayVideos && _currentIndex == index && _isVisible && !_isPaused,
-        borderRadius: BorderRadius.circular(8),
-        isReelsMode: false,
-        onReelsTap: () => _handleVideoTap(url),
+      // In regular mode, wrap in a GestureDetector to handle taps on the video area
+      return Stack(
+        children: [
+          // 1. Video player at the bottom layer
+          FeedVideoPlayerWrapper(
+            url: '${Constants.apiBaseUrl}/$url',
+            videoId: videoId,
+            maxHeight: height,
+            maxWidth: width,
+            feedController: _videoFeedController,
+            onVideoEnd: _handleVideoEnd,
+            autoPlay: widget.autoPlayVideos && _currentIndex == index && _isVisible && !_isPaused,
+            borderRadius: BorderRadius.circular(8),
+            isReelsMode: false,
+            // This callback only gets called by the fullscreen button
+            onReelsTap: () {
+              if (widget.onVideoReelsTap != null) {
+                _pauseAllVideos();
+                widget.onVideoReelsTap!(url);
+              }
+            },
+            // Disable the video player's tap-to-pause functionality
+            disablePlayPause: true,
+            // Pass true to indicate we want the buttons to handle their own taps
+            isolateButtonTaps: true,
+          ),
+
+          // 2. Add an overlay for the main video area tap (excluding control buttons)
+          // This ensures taps on the main video area go to reels
+          Positioned.fill(
+            child: IgnorePointer(
+              // This is critical - it will ignore taps on areas where control buttons are
+              ignoringSemantics: false,
+              child: GestureDetector(
+                onTap: () {
+                  print("Main video area tapped, opening reels: $url");
+                  if (widget.onVideoReelsTap != null) {
+                    _pauseAllVideos();
+                    widget.onVideoReelsTap!(url);
+                  } else {
+                    print("ERROR: onVideoReelsTap callback is null");
+                  }
+                },
+                child: Container(
+                  color: Colors.transparent,
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     }
   }
+
 
   // Build image item
   Widget _buildImageItem(String url, double height) {

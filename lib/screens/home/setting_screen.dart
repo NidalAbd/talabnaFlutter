@@ -9,11 +9,17 @@ import 'package:talabna/screens/profile/change_password_screen.dart';
 
 import '../../blocs/authentication/authentication_bloc.dart';
 import '../../blocs/authentication/authentication_event.dart';
+import '../../blocs/font_size/font_size_bloc.dart';
+import '../../blocs/font_size/font_size_event.dart';
+import '../../blocs/font_size/font_size_state.dart';
 import '../../blocs/service_post/service_post_bloc.dart';
 import '../../blocs/service_post/service_post_event.dart';
 import '../../core/service_post_data_saver_handler.dart';
 import '../../provider/language_theme_selector.dart';
+import '../../services/font_size_service.dart';
 import '../../utils/data_saver_synchronizer.dart';
+import '../../utils/photo_image_helper.dart';
+import '../profile/profile_edit_screen.dart';
 import 'about_screen.dart';
 import 'app_data_clear_service.dart';
 import 'help_center_screen.dart';
@@ -38,6 +44,7 @@ class _SettingScreenState extends State<SettingScreen>
   bool _dataSaverEnabled = false;
   final _appDataClearService = AppDataClearService();
   late  GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  double _currentFontSize = 14.0; // Default font size
 
   @override
   void initState() {
@@ -63,6 +70,14 @@ class _SettingScreenState extends State<SettingScreen>
     _scaffoldKey = GlobalKey<ScaffoldState>();
   }
 
+  Future<void> _loadFontSize() async {
+    final fontSize = await FontSizeService.getDescriptionFontSize();
+    if (mounted) {
+      setState(() {
+        _currentFontSize = fontSize;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -277,6 +292,145 @@ class _SettingScreenState extends State<SettingScreen>
     );
   }
 
+  Widget _buildFontSizeSettings() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
+
+    return BlocBuilder<FontSizeBloc, FontSizeState>(
+      builder: (context, state) {
+        double currentFontSize = FontSizeService.defaultDescriptionFontSize;
+
+        if (state is FontSizeLoaded) {
+          currentFontSize = state.descriptionFontSize;
+        }
+
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.text_fields_outlined,
+                        color: primaryColor,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        _language.getLanguage() == 'ar'
+                            ? 'حجم خط الوصف'
+                            : 'Description Font Size',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${currentFontSize.toInt()}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _language.getLanguage() == 'ar' ? 'صغير' : 'Small',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Text(
+                      _language.getLanguage() == 'ar' ? 'كبير' : 'Large',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: primaryColor,
+                    inactiveTrackColor: Colors.grey[300],
+                    thumbColor: primaryColor,
+                    overlayColor: primaryColor.withOpacity(0.2),
+                    valueIndicatorColor: primaryColor,
+                    showValueIndicator: ShowValueIndicator.always,
+                  ),
+                  child: Slider(
+                    min: FontSizeService.minFontSize,
+                    max: FontSizeService.maxFontSize,
+                    divisions: (FontSizeService.maxFontSize - FontSizeService.minFontSize).toInt(),
+                    value: currentFontSize,
+                    label: currentFontSize.toInt().toString(),
+                    onChanged: (value) {
+                      context.read<FontSizeBloc>().add(FontSizeChanged(value));
+                    },
+                  ),
+                ),
+
+                // Reset button
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      context.read<FontSizeBloc>().add(FontSizeReset());
+
+                      // Show feedback
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(_language.getLanguage() == 'ar'
+                              ? 'تمت إعادة تعيين حجم الخط'
+                              : 'Font size reset to default'),
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                    icon: Icon(Icons.restore, color: primaryColor, size: 16),
+                    label: Text(
+                      _language.getLanguage() == 'ar' ? 'إعادة تعيين' : 'Reset',
+                      style: TextStyle(color: primaryColor),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
@@ -403,6 +557,72 @@ class _SettingScreenState extends State<SettingScreen>
     );
   }
 
+  // Add this method if it doesn't already exist in your _SettingScreenState class
+
+  // Add these helper methods to your _SettingScreenState class
+
+// Helper method to build statistics item
+  Widget _buildStatItem({
+    required IconData icon,
+    required String value,
+    required String label,
+  }) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          size: 22,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppTheme.darkSecondaryColor
+              : AppTheme.lightPrimaryColor,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+// Helper method to build vertical divider
+  Widget _buildVerticalDivider() {
+    return Container(
+      height: 40,
+      width: 1,
+      color: Colors.grey.withOpacity(0.2),
+    );
+  }
+
+  void _navigateToUpdateProfile(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UpdateUserProfile(
+          userId: widget.user.id,
+          user: widget.user,
+        ),
+      ),
+    ).then((_) {
+      // Force a refresh when returning from the profile update screen
+      setState(() {
+        // Refresh user data if needed
+        // You might want to fetch updated user data here
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -469,54 +689,173 @@ class _SettingScreenState extends State<SettingScreen>
               children: [
                 const SizedBox(height: 16),
                 // Profile section
+// Replace the existing profile section in the build method of SettingScreen with this enhanced version
+
+// Profile section
+// Modern Profile Container for SettingScreen
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
-                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
                     ],
                   ),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: primaryColor.withOpacity(0.2),
-                        child: Text(
-                          avatarText,
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: primaryColor,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Column(
+                      children: [
+                        // Background gradient header
+                        Container(
+                          height: 100,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                primaryColor.withOpacity(0.8),
+                                primaryColor.withOpacity(0.4),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(40),
+                              bottomRight: Radius.circular(40),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        widget.user.name ?? _language.tUserText(),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+
+                        // User info with overlapping avatar
+                        Transform.translate(
+                          offset: const Offset(0, -50),
+                          child: Column(
+                            children: [
+                              // Profile image with stacked edit button
+                              Stack(
+                                children: [
+                                  // Outer decoration circle
+                                  Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+                                    ),
+                                    child: Hero(
+                                      tag: 'profileAvatar${widget.user.id}',
+                                      child: Container(
+                                        height: 100,
+                                        width: 100,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: isDarkMode ? Colors.black : Colors.white,
+                                            width: 3,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: primaryColor.withOpacity(0.3),
+                                              blurRadius: 15,
+                                              spreadRadius: 2,
+                                            ),
+                                          ],
+                                        ),
+                                        child: ClipOval(
+                                          child: (widget.user.photos?.isNotEmpty ?? false)
+                                              ? Image.network(
+                                            ProfileImageHelper.getProfileImageUrl(
+                                                widget.user.photos?.first
+                                            ),
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return CircleAvatar(
+                                                radius: 50,
+                                                backgroundColor: primaryColor.withOpacity(0.2),
+                                                child: Text(
+                                                  avatarText,
+                                                  style: TextStyle(
+                                                    fontSize: 32,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: primaryColor,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            loadingBuilder: (context, child, loadingProgress) {
+                                              if (loadingProgress == null) return child;
+                                              return CircleAvatar(
+                                                radius: 50,
+                                                backgroundColor: primaryColor.withOpacity(0.1),
+                                                child: CircularProgressIndicator(
+                                                  value: loadingProgress.expectedTotalBytes != null
+                                                      ? loadingProgress.cumulativeBytesLoaded /
+                                                      loadingProgress.expectedTotalBytes!
+                                                      : null,
+                                                  strokeWidth: 2,
+                                                  color: primaryColor,
+                                                ),
+                                              );
+                                            },
+                                          )
+                                              : CircleAvatar(
+                                            radius: 50,
+                                            backgroundColor: primaryColor.withOpacity(0.2),
+                                            child: Text(
+                                              avatarText,
+                                              style: TextStyle(
+                                                fontSize: 32,
+                                                fontWeight: FontWeight.bold,
+                                                color: primaryColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                  // Edit button
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: GestureDetector(
+                                      onTap: () => _navigateToUpdateProfile(context),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: primaryColor,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: primaryColor.withOpacity(0.4),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              // User info with animations
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.user.email,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-
                 _buildSectionTitle(_language.tPreferencesText()),
 
                 // Using the new LanguageThemeSelector widget
@@ -530,6 +869,7 @@ class _SettingScreenState extends State<SettingScreen>
                     onLanguageChanged: _onLanguageChanged,
                   ),
                 ),
+                _buildFontSizeSettings(),
 
                 _buildSectionTitle(_language.tAccountText()),
 
@@ -545,6 +885,7 @@ class _SettingScreenState extends State<SettingScreen>
                     );
                   },
                 ),
+
 
                 _buildSettingCard(
                   icon: Icons.lock_outline,

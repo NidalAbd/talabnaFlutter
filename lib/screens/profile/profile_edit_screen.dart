@@ -17,6 +17,7 @@ import '../../data/models/user.dart';
 import '../../provider/language.dart';
 import '../../utils/constants.dart';
 import '../../utils/fcm_handler.dart';
+import '../../utils/photo_image_helper.dart';
 import '../widgets/country_dropdown.dart';
 import '../widgets/location_picker.dart';
 
@@ -296,7 +297,8 @@ class _UpdateUserProfileState extends State<UpdateUserProfile> {
           child: ClipOval(
             child: (user.photos != null && user.photos!.isNotEmpty)
                 ? Image.network(
-                    '${Constants.apiBaseUrl}/${user.photos?.first.src}',
+              ProfileImageHelper.getProfileImageUrl(
+                  widget.user.photos?.first),
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => _buildDefaultAvatar(),
                     loadingBuilder: (_, child, loadingProgress) {
@@ -619,22 +621,19 @@ class _UpdateUserProfileState extends State<UpdateUserProfile> {
           children: [
             Center(child: _buildProfileImage(user)),
             // Location Picker with elevation
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: LocationPicker(
-                onLocationPicked: (LatLng location) {
-                  if (mounted) {
-                    setState(() {
-                      _locationLatitudes = location.latitude;
-                      _locationLongitudes = location.longitude;
-                      _hasChanges = true;
-                    });
-                  }
-                },
-              ),
+            LocationPicker(
+              onLocationPicked: (LatLng location) {
+                // Debug print
+                print('UpdateUserProfile received location: ${location.latitude}, ${location.longitude}');
+
+                if (mounted) {
+                  setState(() {
+                    _locationLatitudes = location.latitude;
+                    _locationLongitudes = location.longitude;
+                    _hasChanges = true;
+                  });
+                }
+              },
             ),
             // Country and City Dropdown
             Card(
@@ -699,7 +698,6 @@ class _UpdateUserProfileState extends State<UpdateUserProfile> {
               ),
             ),
             // Gender Dropdown
-// Gender Dropdown
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(

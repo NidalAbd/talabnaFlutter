@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:restart_app/restart_app.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -84,7 +85,6 @@ class _LanguageThemeSelectorState extends State<LanguageThemeSelector> {
       widget.onThemeChanged!();
     }
   }
-
 // Fix the _updateLanguage method by removing the WelcomeScreen specific code
   Future<void> _updateLanguage(String language) async {
     // If showing confirmation dialog, don't apply changes immediately

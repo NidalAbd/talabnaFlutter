@@ -6,20 +6,26 @@ import 'package:talabna/blocs/service_post/service_post_state.dart';
 import 'package:talabna/data/models/service_post.dart';
 import 'package:talabna/data/models/user.dart';
 import 'package:talabna/screens/service_post/service_post_card.dart';
-import 'package:talabna/screens/widgets/shimmer_widgets.dart'; // Import shimmer widgets
+import 'package:talabna/screens/widgets/shimmer_widgets.dart';
 
 class UserPostScreen extends StatefulWidget {
-  const UserPostScreen({super.key, required this.userID, required this.user});
+  const UserPostScreen({
+    super.key,
+    required this.userID,
+    required this.user,
+    this.primary = true,
+  });
 
   final int userID;
   final User user;
+  final bool primary;
 
   @override
   UserPostScreenState createState() => UserPostScreenState();
 }
 
 class UserPostScreenState extends State<UserPostScreen> {
-  final ScrollController _scrollOtherUserController = ScrollController();
+  ScrollController? _scrollOtherUserController;
   late ServicePostBloc _servicePostBloc;
   int _currentPage = 1;
   bool _hasReachedMax = false;
@@ -33,16 +39,22 @@ class UserPostScreenState extends State<UserPostScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollOtherUserController.addListener(_onScrollOtherUserPost);
+    // Only create a controller if primary is false
+    if (!widget.primary) {
+      _scrollOtherUserController = ScrollController();
+      _scrollOtherUserController!.addListener(_onScrollOtherUserPost);
+    }
+
     _servicePostBloc = BlocProvider.of<ServicePostBloc>(context);
     _handleRefreshOtherUserPost(); // Reset the state when the widget is created
   }
 
   void _onScrollOtherUserPost() {
     if (!_hasReachedMax &&
-        _scrollOtherUserController.hasClients &&
-        _scrollOtherUserController.position.pixels >=
-            _scrollOtherUserController.position.maxScrollExtent - 200) {
+        _scrollOtherUserController != null &&
+        _scrollOtherUserController!.hasClients &&
+        _scrollOtherUserController!.position.pixels >=
+            _scrollOtherUserController!.position.maxScrollExtent - 200) {
       _currentPage++;
       _servicePostBloc.add(GetServicePostsByUserIdEvent(
           userId: widget.userID, page: _currentPage));
@@ -57,6 +69,7 @@ class UserPostScreenState extends State<UserPostScreen> {
     });
     _servicePostBloc.add(GetServicePostsByUserIdEvent(
         userId: widget.userID, page: _currentPage));
+    return Future.value();
   }
 
   void _handleOtherUserPostLoadSuccess(
@@ -68,9 +81,10 @@ class UserPostScreenState extends State<UserPostScreen> {
   }
 
   Future<bool> _onWillPopOtherUserPost() async {
-    if (_scrollOtherUserController.positions.isNotEmpty &&
-        _scrollOtherUserController.offset > 0) {
-      _scrollOtherUserController.animateTo(
+    if (_scrollOtherUserController != null &&
+        _scrollOtherUserController!.hasClients &&
+        _scrollOtherUserController!.offset > 0) {
+      _scrollOtherUserController!.animateTo(
         0.0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInToLinear,
@@ -87,7 +101,10 @@ class UserPostScreenState extends State<UserPostScreen> {
 
   @override
   void dispose() {
-    _scrollOtherUserController.dispose();
+    if (_scrollOtherUserController != null) {
+      _scrollOtherUserController!.removeListener(_onScrollOtherUserPost);
+      _scrollOtherUserController!.dispose();
+    }
     super.dispose();
   }
 
@@ -146,9 +163,9 @@ class UserPostScreenState extends State<UserPostScreen> {
           Text(
             'Oops! Something went wrong',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
+              color: Colors.red,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -185,19 +202,19 @@ class UserPostScreenState extends State<UserPostScreen> {
           Text(
             'No Posts Yet',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'This user hasn\'t created any posts yet.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.color
-                      ?.withOpacity(0.7),
-                ),
+              color: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.color
+                  ?.withOpacity(0.7),
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -209,14 +226,22 @@ class UserPostScreenState extends State<UserPostScreen> {
     return RefreshIndicator(
       onRefresh: _handleRefreshOtherUserPost,
       child: ListView.builder(
-        controller: _scrollOtherUserController,
+        // Here is the key fix: Only set either primary OR controller, not both
+        primary: widget.primary,
+        controller: widget.primary ? null : _scrollOtherUserController,
+        physics: const AlwaysScrollableScrollPhysics(),
         itemCount: _hasReachedMax
             ? _servicePostsOtherUser.length
             : _servicePostsOtherUser.length + 1,
         itemBuilder: (context, index) {
           // Pagination loading indicator
           if (index >= _servicePostsOtherUser.length) {
-            return const ServicePostScreenShimmer();
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: CircularProgressIndicator(),
+              ),
+            );
           }
 
           // Regular post item

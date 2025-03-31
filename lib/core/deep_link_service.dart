@@ -6,6 +6,7 @@ import 'package:talabna/utils/debug_logger.dart';
 import '../blocs/service_post/service_post_bloc.dart';
 import '../blocs/service_post/service_post_event.dart';
 import '../core/service_locator.dart';
+import '../services/service_post_deep_link_handler.dart';
 import '../utils/deep_link_diagnostics.dart';
 import 'navigation_service.dart';
 
@@ -46,37 +47,46 @@ class DeepLinkService {
   String? get initialLink => _initialLink;
 
   // Initialize deep link service
-  Future<void> initialize() async {
-    if (_isInitialized) return;
+// Initialize deep link service
+  Future<bool> initialize() async {
+    if (_isInitialized) return false;
 
     try {
       DebugLogger.log('Initializing DeepLinkService', category: 'DEEPLINK');
 
+      // Track if we have a deep link
+      bool hasInitialDeepLink = false;
+
       // Get initial link that opened the app
       try {
         Uri? initialUri = await _appLinks.getInitialLink();
-        _initialLink = initialUri.toString();
+        if (initialUri != null) {
+          _initialLink = initialUri.toString();
 
-        if (_initialLink != null) {
-          DebugLogger.log('Initial deep link: $_initialLink',
-              category: 'DEEPLINK');
+          if (_initialLink != null && _initialLink!.isNotEmpty) {
+            DebugLogger.log('Initial deep link: $_initialLink',
+                category: 'DEEPLINK');
 
-          // Debug link info
-          _debugLinkInfo(_initialLink!);
+            // Debug link info
+            _debugLinkInfo(_initialLink!);
 
-          // Safely process the initial link data
-          final linkData = _processLinkData(_initialLink!);
-          if (linkData != null) {
-            // Store in SharedPreferences for persistence
-            await _storeDeepLinkData(linkData['type']!, linkData['id']!);
+            // Safely process the initial link data
+            final linkData = _processLinkData(_initialLink!);
+            if (linkData != null) {
+              // Store in SharedPreferences for persistence
+              await _storeDeepLinkData(linkData['type']!, linkData['id']!);
 
-            // Mark as direct deep link to prevent lock releases
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('direct_deeplink_active', true);
+              // Mark as direct deep link to prevent lock releases
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('direct_deeplink_active', true);
 
-            // Preload content for better performance
-            if (linkData['type'] == TYPE_REELS) {
-              _preloadContent(linkData['id']!);
+              // Preload content for better performance
+              if (linkData['type'] == TYPE_REELS) {
+                _preloadContent(linkData['id']!);
+              }
+
+              // Set the flag - we have a valid initial deep link
+              hasInitialDeepLink = true;
             }
           }
         }
@@ -96,11 +106,15 @@ class DeepLinkService {
       // Start queue processor for pending links
       _startQueueProcessor(initialDelay: Duration(milliseconds: 500));
 
-      DebugLogger.log('DeepLinkService initialization complete',
+      DebugLogger.log('DeepLinkService initialization complete, hasInitialDeepLink: $hasInitialDeepLink',
           category: 'DEEPLINK');
+
+      // Return whether we have an initial deep link
+      return hasInitialDeepLink;
     } catch (e) {
       DebugLogger.log('Error initializing deep links: $e',
           category: 'DEEPLINK');
+      return false;
     }
   }
 
@@ -141,7 +155,28 @@ class DeepLinkService {
       final id = linkData['id'];
 
       if (type != null && id != null) {
-        // Store for persistence
+        // Handle directly based on type
+        if (type == TYPE_SERVICE_POST) {
+          // Use our new ServicePostDeepLinkHandler
+          try {
+            if (_appReady && !_isProcessingDeepLink) {
+              final navigationService = serviceLocator<NavigationService>();
+              final context = navigationService.navigatorKey.currentContext;
+
+              if (context != null) {
+                // Use direct handler for service post - avoids the multiple loading issue
+                ServicePostDeepLinkHandler().handleServicePostDeepLink(
+                    context, id, isFromDeepLink: true
+                );
+                return;
+              }
+            }
+          } catch (e) {
+            DebugLogger.log('Error using direct handler: $e', category: 'DEEPLINK');
+          }
+        }
+
+        // Store for persistence (as fallback or for other types)
         _storeDeepLinkData(type, id);
 
         // Process or queue based on app state
@@ -235,7 +270,6 @@ class DeepLinkService {
       return null;
     }
   }
-
   // Preload content for better performance
   void _preloadContent(String id) {
     try {

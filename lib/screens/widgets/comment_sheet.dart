@@ -13,6 +13,7 @@ import 'package:talabna/screens/widgets/user_avatar_profile.dart';
 import '../../blocs/comments/comment_event.dart';
 import '../../provider/language.dart';
 import '../../utils/constants.dart';
+import '../../utils/photo_image_helper.dart';
 
 class CommentModalBottomSheet extends StatefulWidget {
   final double iconSize;
@@ -20,8 +21,9 @@ class CommentModalBottomSheet extends StatefulWidget {
   final UserProfileBloc userProfileBloc;
   final CommentBloc commentBloc;
   final ServicePost? servicePost;
-  final bool showCountOnRight; // New parameter to control count position
-  final bool showCount; // New parameter to control if count is shown
+  final bool showCountOnRight; // Position count on right side of icon
+  final bool showCountOnBottom; // Position count below icon (default)
+  final bool showCount; // Control if count is shown
   final Color? iconColor; // Allow customizing icon color
 
   const CommentModalBottomSheet({
@@ -31,7 +33,8 @@ class CommentModalBottomSheet extends StatefulWidget {
     required this.commentBloc,
     required this.servicePost,
     required this.user,
-    this.showCountOnRight = false, // By default, count is shown as a badge
+    this.showCountOnRight = false, // By default, count is not on the right
+    this.showCountOnBottom = true, // By default, count is shown below
     this.showCount = true, // By default, show the count
     this.iconColor,
   });
@@ -148,6 +151,8 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
   // Build horizontal layout with count on right
   Widget _buildHorizontalLayout() {
     final commentsCount = widget.servicePost?.commentsCount ?? 0;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
 
     return GestureDetector(
       onTap: _showCommentsBottomSheet,
@@ -155,18 +160,18 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.comment,
+            Icons.mode_comment_outlined,
             size: widget.iconSize,
-            color: widget.iconColor ?? Colors.white,
           ),
           if (widget.showCount && commentsCount > 0) ...[
             const SizedBox(width: 4),
             Text(
               _formatCount(commentsCount),
               style: TextStyle(
-                color: widget.iconColor ?? Colors.white,
-                fontSize: widget.iconSize * 0.4,
+                fontSize: widget.iconSize * 0.7,
                 fontWeight: FontWeight.bold,
+                  color:      isDarkMode ? AppTheme.darkPrimaryColor : AppTheme.lightPrimaryColor,
+
               ),
             ),
           ],
@@ -175,74 +180,65 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
     );
   }
 
-  // Build vertical layout with count below
   Widget _buildVerticalLayout() {
     final commentsCount = widget.servicePost?.commentsCount ?? 0;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return GestureDetector(
-      onTap: _showCommentsBottomSheet,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.comment,
-            size: widget.iconSize,
-            color: widget.iconColor ?? Colors.white,
-          ),
-          if (widget.showCount && commentsCount > 0) ...[
-            const SizedBox(height: 4),
-            Text(
-              _formatCount(commentsCount),
-              style: TextStyle(
-                color: widget.iconColor ?? Colors.white,
-                fontSize: widget.iconSize * 0.4,
-                fontWeight: FontWeight.bold,
-              ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.comment,
+          size: widget.iconSize,
+          color: Colors.white,
+        ),
+        if (widget.showCount && commentsCount > 0) ...[
+          const SizedBox(height: 4),
+          Text(
+            _formatCount(commentsCount),
+            style: TextStyle(
+              fontSize: widget.iconSize * 0.5,
+              fontWeight: FontWeight.w500,
+                color:Colors.white
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 
-  // Build badge style (original implementation)
   Widget _buildBadgeStyle() {
     final commentsCount = widget.servicePost?.commentsCount ?? 0;
 
-    return IconButton(
-      onPressed: _showCommentsBottomSheet,
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Icon(
-            Icons.comment,
-            size: widget.iconSize,
-            color: widget.iconColor ?? Colors.white,
-          ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(
+          Icons.comment,
+          size: widget.iconSize,
+        ),
 
-          // Comment count badge
-          if (widget.showCount && commentsCount > 0)
-            Positioned(
-              top: -5,
-              right: -5,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  _formatCount(commentsCount),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
+        // Comment count badge
+        if (widget.showCount && commentsCount > 0)
+          Positioned(
+            top: -5,
+            right: -5,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                _formatCount(commentsCount),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -253,9 +249,14 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
       listener: (context, state) {
         // You can use this listener to react to specific state changes
       },
-      child: widget.showCountOnRight
-          ? _buildHorizontalLayout()
-          : _buildVerticalLayout(),
+      child: GestureDetector(
+        onTap: _showCommentsBottomSheet,
+        child: widget.showCountOnRight
+            ? _buildHorizontalLayout()
+            : (widget.showCountOnBottom
+            ? _buildVerticalLayout()
+            : _buildBadgeStyle()),
+      ),
     );
   }
 
@@ -268,31 +269,48 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
       ));
     }
 
+    // This is the key change - use the same modal pattern as ContactModalBottomSheet
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       isDismissible: true,
-      // Enable tap-to-dismiss
       enableDrag: true,
-      // Enable drag-to-dismiss
-      builder: (context) => GestureDetector(
-        // This prevents taps outside the content area from being ignored
-        onTap: () => Navigator.of(context).pop(),
-        child: Container(
-          color: Colors.transparent,
-          child: GestureDetector(
-            // This prevents taps inside the sheet from dismissing it
-            onTap: () {
-              // Don't propagate the tap event
-              FocusScope.of(context)
-                  .unfocus(); // Dismiss keyboard on tap outside text field
-            },
-            behavior: HitTestBehavior.opaque,
-            child: _buildCommentsSheetContent(context),
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? AppTheme.darkPrimaryColor
+                : AppTheme.lightBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
-        ),
-      ),
+          child: Column(
+            children: [
+              // Header
+              _buildSheetHeader(),
+
+              // Comments List - Expanded to take available space
+              Expanded(
+                child: BlocBuilder<CommentBloc, CommentState>(
+                  bloc: widget.commentBloc,
+                  builder: (context, state) {
+                    return _buildCommentsList(state);
+                  },
+                ),
+              ),
+
+              // Input box - Automatically sits above keyboard
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: _buildCommentInput(),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -307,8 +325,8 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
         return Container(
           decoration: BoxDecoration(
             color: Theme.of(context).brightness == Brightness.dark
-                ? AppTheme.darkPrimaryColor
-                : AppTheme.lightPrimaryColor,
+                ? AppTheme.darkSecondaryColor
+                : AppTheme.lightBackgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
@@ -473,9 +491,9 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           UserAvatarProfile(
-            imageUrl: comment.user.photos?.isNotEmpty == true
-                ? '${Constants.apiBaseUrl}/${comment.user.photos?.first.src}'
-                : '',
+            imageUrl:
+              ProfileImageHelper.getProfileImageUrl(
+                  comment.user.photos?.first),
             radius: 20,
             toUser: comment.user.id,
             canViewProfile: true,
@@ -581,9 +599,8 @@ class _CommentModalBottomSheetState extends State<CommentModalBottomSheet> {
         // Align to bottom for multi-line input
         children: [
           UserAvatarProfile(
-            imageUrl: widget.user.photos?.isNotEmpty == true
-                ? '${Constants.apiBaseUrl}/${widget.user.photos?.first.src}'
-                : '',
+            imageUrl:   ProfileImageHelper.getProfileImageUrl(
+                widget.user.photos?.first),
             radius: 16,
             toUser: widget.user.id,
             canViewProfile: false,

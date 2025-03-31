@@ -17,7 +17,7 @@ class FeedVideoPlayer extends StatefulWidget {
   final bool autoPlay;
   final bool showControls;
   final bool isReelsMode;
-  final bool disablePlayPause; // New property to disable play/pause
+  final bool disablePlayPause; // Property to disable play/pause
 
   const FeedVideoPlayer({
     Key? key,
@@ -279,13 +279,29 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer>
             ),
             child: Stack(
               children: [
-                // Video content
-                if (_isInitialized)
+                // The key change: Use a different approach based on disablePlayPause flag
+                if (widget.disablePlayPause)
+                // When play/pause is disabled, just show the video without a gesture detector
                   Center(
-                    child: widget.isReelsMode ||
+                    child: _isInitialized
+                        ? (widget.isReelsMode ||
                         (_controller.value.size.height > widget.maxHeight * 1.5)
                         ? _buildCoverModeVideo()
-                        : _buildContainModeVideo(),
+                        : _buildContainModeVideo())
+                        : Container(),
+                  )
+                else
+                // When play/pause is enabled, add a gesture detector to toggle playback
+                  GestureDetector(
+                    onTap: _togglePlayPause,
+                    child: Center(
+                      child: _isInitialized
+                          ? (widget.isReelsMode ||
+                          (_controller.value.size.height > widget.maxHeight * 1.5)
+                          ? _buildCoverModeVideo()
+                          : _buildContainModeVideo())
+                          : Container(color: Colors.transparent),
+                    ),
                   ),
 
                 // Loading indicator
@@ -322,6 +338,27 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer>
                           child: Text('Retry'),
                         ),
                       ],
+                    ),
+                  ),
+
+                // Show play button overlay when paused (if not disabling play/pause)
+                if (_isInitialized &&
+                    !widget.disablePlayPause &&
+                    !_controller.value.isPlaying)
+                  Center(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.3),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 50,
+                        ),
+                        onPressed: _togglePlayPause,
+                      ),
                     ),
                   ),
 
@@ -428,7 +465,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer>
                 ),
                 // Drag handle
                 Positioned(
-                  left: (current / maxDuration) * (MediaQuery.of(context).size.width - 12),
+                  left: maxDuration > 0
+                      ? (current / maxDuration) * (MediaQuery.of(context).size.width - 12)
+                      : 0,
                   top: -4,
                   child: Container(
                     width: 12,

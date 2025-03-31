@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:talabna/app_theme.dart';
 import 'package:talabna/data/models/categories.dart';
 import 'package:talabna/data/repositories/categories_repository.dart';
+import 'package:talabna/provider/language.dart';
 
 import '../../core/service_locator.dart';
 
@@ -29,7 +30,8 @@ class CategoriesDropdown extends StatefulWidget {
 
 class _CategoriesDropdownState extends State<CategoriesDropdown> {
   final CategoriesRepository _repository =
-      serviceLocator<CategoriesRepository>();
+  serviceLocator<CategoriesRepository>();
+  final Language _language = Language();
   List<Category> _categories = [];
   Category? _selectedCategory;
   bool _isLoading = false;
@@ -72,8 +74,8 @@ class _CategoriesDropdownState extends State<CategoriesDropdown> {
         // Filter out categories 6 and 7 if hideServicePostCategories is true
         var filteredCategories = widget.hideServicePostCategories
             ? fetchedCategories
-                .where((cat) => cat.id != 6 && cat.id != 7)
-                .toList()
+            .where((cat) => cat.id != 6 && cat.id != 7)
+            .toList()
             : fetchedCategories;
 
         if (widget.initialValue != null) {
@@ -110,13 +112,18 @@ class _CategoriesDropdownState extends State<CategoriesDropdown> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+
+    // Using the new modern theme colors
     final backgroundColor = isDarkMode
         ? AppTheme.darkBackgroundColor
         : AppTheme.lightBackgroundColor;
-    final primaryColor =
-        isDarkMode ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
-    final textColor =
-        isDarkMode ? AppTheme.darkTextColor : AppTheme.lightTextColor;
+
+    final primaryColor = theme.colorScheme.primary;
+
+    final textColor = isDarkMode
+        ? AppTheme.darkTextColor
+        : AppTheme.lightTextColor;
 
     if (_isLoading && _categories.isEmpty) {
       return Center(
@@ -129,7 +136,10 @@ class _CategoriesDropdownState extends State<CategoriesDropdown> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: TextStyle(color: AppTheme.lightErrorColor)),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             TextButton(
               onPressed: _fetchCategories,
               style: TextButton.styleFrom(foregroundColor: primaryColor),
@@ -163,7 +173,7 @@ class _CategoriesDropdownState extends State<CategoriesDropdown> {
             ),
           ),
           dropdownColor:
-              isDarkMode ? AppTheme.darkBackgroundColor : Colors.white,
+          isDarkMode ? AppTheme.darkBackgroundColor : Colors.white,
           icon: Icon(Icons.arrow_drop_down, color: primaryColor),
           isExpanded: true,
           items: _categories.map((category) {
@@ -202,8 +212,40 @@ class _CategoriesDropdownState extends State<CategoriesDropdown> {
   }
 
   String _getCategoryName(Category category) {
-    return category.name[widget.language] ??
-        category.name['en'] ??
-        'Unknown Category';
+    // Use current language from Language class
+    final currentLang = _language.getLanguage();
+
+    // First try the current language
+    if (category.name.containsKey(currentLang)) {
+      final name = category.name[currentLang];
+      if (name != null && name.isNotEmpty) {
+        return name;
+      }
+    }
+
+    // If specified language isn't available, try fallbacks
+    // First try English if it exists
+    if (category.name.containsKey('en') &&
+        category.name['en'] != null &&
+        category.name['en']!.isNotEmpty) {
+      return category.name['en']!;
+    }
+
+    // Then try Arabic if it exists
+    if (category.name.containsKey('ar') &&
+        category.name['ar'] != null &&
+        category.name['ar']!.isNotEmpty) {
+      return category.name['ar']!;
+    }
+
+    // Last resort fallback to any available language
+    for (final langValue in category.name.values) {
+      if (langValue.isNotEmpty) {
+        return langValue;
+      }
+    }
+
+    // If everything else fails
+    return 'Unknown Category';
   }
 }

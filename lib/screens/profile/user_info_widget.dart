@@ -200,9 +200,7 @@ class _UserInfoWidgetState extends State<UserInfoWidget> {
       child: _buildDetailTile(
         icon: Icons.check_circle_outline_rounded,
         title: _language.getAccountStatusText(),
-        subtitle: widget.user.isActive == true
-            ? _language.getActiveText()
-            : _language.getInactiveText(),
+        subtitle: widget.user.isActive!,
         primaryColor: primaryColor,
         showDivider: false,
         highlightSubtitle: true,

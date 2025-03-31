@@ -24,13 +24,16 @@ class MyApp extends StatefulWidget {
   final bool isDarkTheme;
   final GlobalKey<NavigatorState> navigatorKey;
   final bool autoAuthenticated;
-
+  final String initialRoute;
+  final Map<String, dynamic>? initialRouteArgs;
   const MyApp({
     super.key,
     required this.authenticationRepository,
     required this.isDarkTheme,
     required this.navigatorKey,
     this.autoAuthenticated = false,
+    this.initialRoute = Routes.initial,
+    this.initialRouteArgs,
   });
 
   @override
@@ -107,7 +110,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       if (mounted) {
         setState(
-            () => _isInitialized = true); // Initialize anyway to avoid stuck UI
+                () => _isInitialized = true); // Initialize anyway to avoid stuck UI
       }
     }
   }
@@ -195,53 +198,50 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             theme: theme,
             navigatorKey: widget.navigatorKey,
             onGenerateRoute: Routes.generateRoute,
-            initialRoute: Routes.initial,
-            home: !_isInitialized
-                // Show nothing during initialization, preserving splash screen
-                ? Container(color: theme.scaffoldBackgroundColor)
-                : FutureBuilder<SharedPreferences>(
-                    future: SharedPreferences.getInstance(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        // Show nothing during prefs loading
-                        return Container(color: theme.scaffoldBackgroundColor);
-                      }
+            initialRoute: widget.initialRoute,
+            // Remove the home property and onGenerateInitialRoutes
+            // Instead, pass initial arguments through the standard route generator
+            routes: {
+              // Make sure we have a default route that handles initial arguments
+              widget.initialRoute: (context) {
+                if (!_isInitialized) {
+                  // Show loading during initialization
+                  return Container(color: theme.scaffoldBackgroundColor);
+                }
 
-                      final prefs = snapshot.data!;
-                      return BlocConsumer<AuthenticationBloc,
-                          AuthenticationState>(
-                        listenWhen: (previous, current) =>
-                            current is AuthenticationSuccess,
-                        listener: (context, state) {
-                          if (state is AuthenticationSuccess) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              // Mark app as ready for deep links
-                              _notifyAppReady();
+                return FutureBuilder<SharedPreferences>(
+                  future: SharedPreferences.getInstance(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return Container(color: theme.scaffoldBackgroundColor);
+                    }
 
-                              // Get navigation service
-                              final navigationService =
-                                  serviceLocator<NavigationService>();
-
-                              // Wait a bit before navigating to home
-                              Future.delayed(Duration(milliseconds: 500), () {
-                                // Go to home if no deep link is being processed
-                                if (!navigationService.isProcessingDeepLink) {
-                                  navigationService.navigateToHome(
-                                      context, state.userId!);
-                                }
-                              });
+                    final prefs = snapshot.data!;
+                    return BlocConsumer<AuthenticationBloc, AuthenticationState>(
+                      listenWhen: (previous, current) => current is AuthenticationSuccess,
+                      listener: (context, state) {
+                        if (state is AuthenticationSuccess) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            _notifyAppReady();
+                            final navigationService = serviceLocator<NavigationService>();
+                            Future.delayed(Duration(milliseconds: 500), () {
+                              if (!navigationService.isProcessingDeepLink) {
+                                navigationService.navigateToHome(context, state.userId!);
+                              }
                             });
-                          }
-                        },
-                        builder: (context, state) {
-                          return _buildScreenForState(context, state, prefs);
-                        },
-                      );
-                    },
-                  ),
+                          });
+                        }
+                      },
+                      builder: (context, state) {
+                        return _buildScreenForState(context, state, prefs);
+                      },
+                    );
+                  },
+                );
+              },
+            },
           ),
         );
       },
     );
-  }
-}
+  }}

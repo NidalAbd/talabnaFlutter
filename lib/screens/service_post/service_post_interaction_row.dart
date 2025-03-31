@@ -169,10 +169,9 @@ class _ServicePostInteractionRowState extends State<ServicePostInteractionRow> {
                             size: 22,
                             color: isFavorite
                                 ? Colors.red
-                                : Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? AppTheme.darkIconColor
-                                    : AppTheme.lightIconColor,
+                                : Theme.of(context).brightness == Brightness.dark
+                                ? Theme.of(context).iconTheme.color
+                                : Theme.of(context).iconTheme.color,
                           ),
                           onPressed: () {
                             // printWidgetHierarchy(context);

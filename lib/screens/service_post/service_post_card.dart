@@ -8,7 +8,8 @@ import 'package:talabna/data/models/user.dart';
 import 'package:talabna/screens/service_post/service_post_view.dart';
 import 'package:talabna/screens/widgets/user_avatar.dart';
 import 'package:talabna/utils/premium_badge.dart';
-import '../../main.dart';
+import '../../blocs/font_size/font_size_bloc.dart';
+import '../../blocs/font_size/font_size_state.dart';
 import '../../provider/language.dart';
 import '../../utils/photo_image_helper.dart';
 import '../reel/reels_screen.dart';
@@ -51,14 +52,14 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
     _userProfileBloc = BlocProvider.of<OtherUserProfileBloc>(context);
     _checkDataSaverMode();
 
-    // Animation setup
+    // Animation setup with smoother timing
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(parent: _animationController, curve: Curves.easeInOut)
+        CurvedAnimation(parent: _animationController, curve: Curves.easeOut)
     );
 
     _animationController.forward();
@@ -82,9 +83,8 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDarkMode ? Colors.grey.shade900 : Colors.white;
-    final shadowColor = isDarkMode ? Colors.black54 : Colors.black12;
     final isArabic = language.getLanguage() == 'ar';
+    final theme = Theme.of(context);
 
     return BlocListener<ServicePostBloc, ServicePostState>(
       listener: (context, state) {
@@ -99,16 +99,27 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
       child: FadeTransition(
         opacity: _fadeAnimation,
         child: Card(
-          elevation: 1,
-          clipBehavior: Clip.antiAlias,
-          margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          color: isDarkMode
+              ? Colors.grey.shade800.withOpacity(0.5)
+              : Color(0xFFF8F8F8),
+          elevation: 5,
+          shadowColor: isDarkMode
+              ? Colors.black38
+              : theme.colorScheme.primary.withOpacity(0.08),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: isDarkMode
+                  ? Colors.grey.shade800.withOpacity(0.5)
+                  : Colors.grey.shade200,
+              width: 0.5,
+            ),
           ),
-          color: cardColor,
-          shadowColor: shadowColor,
           child: InkWell(
             onTap: () => _navigateToPostDetails(context),
+            borderRadius: BorderRadius.circular(16),
+            splashColor: theme.primaryColor.withOpacity(0.1),
+            highlightColor: theme.primaryColor.withOpacity(0.05),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -128,10 +139,9 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
     );
   }
 
-
   Widget _buildDivider(Color color) {
     return Container(
-      height: 20,
+      height: 16, // Slightly smaller
       width: 1,
       color: color,
     );
@@ -144,13 +154,19 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
     Color? iconColor,
     required bool isDarkMode,
   }) {
-    final textColor = isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700;
-    final defaultIconColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
+    final theme = Theme.of(context);
+    final textColor = isDarkMode
+        ? Colors.grey.shade300
+        : Colors.grey.shade700;
+    final defaultIconColor = isDarkMode
+        ? Colors.grey.shade400
+        : Colors.grey.shade600;
 
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -159,11 +175,11 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
               size: 16,
               color: iconColor ?? defaultIconColor,
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
                 color: textColor,
               ),
@@ -196,7 +212,8 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
     if (difference.inMinutes < 1) return 'Just now';
     if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
     if (difference.inHours < 24) return '${difference.inHours}h ago';
-    return '${difference.inDays}d ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${(difference.inDays / 7).floor()}w ago';
   }
 
   String formatNumber(int number) {
@@ -217,105 +234,6 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
     }
   }
 
-  Widget _buildHeader(bool isDarkMode, bool isAppArabic) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Hero(
-            tag: 'avatar_${widget.servicePost.userId}',
-            child: UserAvatar(
-              imageUrl: ProfileImageHelper.getProfileImageUrl(
-                widget.servicePost.userPhoto,
-              ),
-              radius: 18,
-              fromUser: widget.userProfileId,
-              toUser: widget.servicePost.userId!,
-              canViewProfile: widget.canViewProfile,
-              user: widget.user,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: AutoDirectionText(
-                        text: widget.servicePost.userName ?? 'Unknown',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: isDarkMode ? Colors.white : Colors.black87,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (widget.servicePost.haveBadge != 'عادي')
-                      const SizedBox(width: 4),
-                    if (widget.servicePost.haveBadge != 'عادي')
-                      PremiumBadge(
-                        badgeType: widget.servicePost.haveBadge ?? 'عادي',
-                        size: 14,
-                        userID: widget.userProfileId,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.access_time,
-                      size: 10,
-                      color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      _formatTimeDifference(widget.servicePost.createdAt),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
-                      ),
-                    ),
-                    if (widget.servicePost.distance != null) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 2,
-                        height: 2,
-                        decoration: BoxDecoration(
-                          color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Icon(
-                        Icons.location_on,
-                        size: 10,
-                        color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        "${widget.servicePost.distance!.clamp(0, 999).toInt()} km",
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
   Widget _buildTitleBadge(bool isDarkMode) {
     final isRequest = widget.servicePost.type == 'طلب';
     final isArabic = language.getLanguage() == 'ar';
@@ -363,6 +281,243 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
           ),
         ],
       ),
+    );
+  }
+  Widget _buildHeader(bool isDarkMode, bool isAppArabic) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // User avatar with enhanced shadow
+          Hero(
+            tag: 'avatar_${widget.servicePost.userId}',
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.primaryColor.withOpacity(0.15),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: UserAvatar(
+                imageUrl: ProfileImageHelper.getProfileImageUrl(
+                  widget.servicePost.userPhoto,
+                ),
+                radius: 20, // Slightly larger
+                fromUser: widget.userProfileId,
+                toUser: widget.servicePost.userId!,
+                canViewProfile: widget.canViewProfile,
+                user: widget.user,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Username and badge row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: AutoDirectionText(
+                        text: widget.servicePost.userName ?? 'Unknown',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: isDarkMode ? Colors.white : Colors.black87,
+                          letterSpacing: -0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+
+                    if (widget.servicePost.haveBadge != 'عادي')
+                      PremiumBadge(
+                        badgeType: widget.servicePost.haveBadge ?? 'عادي',
+                        size: 22,
+                        userID: widget.userProfileId,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                // Time and location info
+                Row(
+                  children: [
+                    Icon(
+                      Icons.access_time_rounded,
+                      size: 12,
+                      color: theme.colorScheme.secondary.withOpacity(0.8),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _formatTimeDifference(widget.servicePost.createdAt),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade700,
+                      ),
+                    ),
+                    if (widget.servicePost.distance != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 3,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: isDarkMode ? Colors.grey.shade500 : Colors.grey.shade600,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.location_on_rounded,
+                        size: 12,
+                        color: theme.colorScheme.secondary.withOpacity(0.8),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        "${widget.servicePost.distance!.clamp(0, 999).toInt()} km",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                    // Add post type badge (request/offer)
+
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDescription(bool isDarkMode, bool isArabic) {
+    final theme = Theme.of(context);
+    // Get font size from bloc
+    final fontSizeState = context.watch<FontSizeBloc>().state;
+    final descriptionFontSize = fontSizeState is FontSizeLoaded
+        ? fontSizeState.descriptionFontSize
+        : 14.0; // slightly larger fallback for better readability
+
+    // Adjust max lines based on data saver mode
+    final maxLinesWhenCollapsed = _dataSaverEnabled ? 6 : 4; // Show one more line
+    final hasLongText = widget.servicePost.description != null &&
+        widget.servicePost.description!.split('\n').length >
+            maxLinesWhenCollapsed;
+    final accent = theme.colorScheme.primary;
+
+    // Detect if description is primarily Arabic
+    final isDescriptionArabic = widget.servicePost.description != null &&
+        widget.servicePost.description!.isNotEmpty &&
+        isArabicText(widget.servicePost.description!);
+
+    return Column(
+      crossAxisAlignment: isDescriptionArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        // Title row with enhanced styling
+        if (widget.servicePost.title != null && widget.servicePost.title!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+            child: Row(
+              textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.servicePost.title!,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16, // Slightly larger title
+                      color: isDarkMode ? theme.colorScheme.onSurface : theme.colorScheme.onSurface,
+                      letterSpacing: isDescriptionArabic ? 0 : -0.3,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+                    textAlign: isDescriptionArabic ? TextAlign.right : TextAlign.left,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Description text with enhanced styling
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Directionality(
+            textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+            child: Text(
+              widget.servicePost.description ?? "",
+              maxLines: _isExpanded ? 100 : maxLinesWhenCollapsed,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: descriptionFontSize,
+                color: isDarkMode
+                    ? theme.colorScheme.onSurface.withOpacity(0.9)
+                    : theme.colorScheme.onSurface.withOpacity(0.8),
+                height: 1.4, // Improved line height for readability
+                letterSpacing: isDescriptionArabic ? 0 : 0.1,
+              ),
+              textAlign: isDescriptionArabic ? TextAlign.right : TextAlign.left,
+            ),
+          ),
+        ),
+
+        // Show more/less button with enhanced styling
+        if (hasLongText)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _isExpanded = !_isExpanded;
+                });
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+                  children: [
+                    Text(
+                      _isExpanded ? (isDescriptionArabic ? 'عرض أقل' : 'Show less') :
+                      (isDescriptionArabic ? 'عرض المزيد' : 'Show more'),
+                      style: TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: accent,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Tags row with improved styling
+        _buildTagsRow(isDarkMode, isDescriptionArabic),
+      ],
     );
   }
 
@@ -458,105 +613,6 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
     );
   }
 
-// Updated _buildDescription method for ServicePostCard
-  Widget _buildDescription(bool isDarkMode, bool isAppArabic) {
-    // Adjust max lines based on data saver mode
-    final maxLinesWhenCollapsed = _dataSaverEnabled ? 6 : 3;
-    final hasLongText = widget.servicePost.description != null &&
-        widget.servicePost.description!.split('\n').length >
-            maxLinesWhenCollapsed;
-    final accent = Theme.of(context).primaryColor;
-
-    // Detect if description is primarily Arabic
-    final isDescriptionArabic = widget.servicePost.description != null &&
-        widget.servicePost.description!.isNotEmpty &&
-        isArabicText(widget.servicePost.description!);
-
-    return Column(
-      crossAxisAlignment: isDescriptionArabic ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
-          child: Row(
-            textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
-            children: [
-              if (widget.servicePost.title != null &&
-                  widget.servicePost.title!.isNotEmpty) ...[
-                Expanded(
-                  child: Text(
-                    widget.servicePost.title!,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: isDarkMode ? Colors.white : Colors.black,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
-                    textAlign: isDescriptionArabic ? TextAlign.right : TextAlign.left,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        Directionality(
-          textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-            child: Text(
-              widget.servicePost.description ?? "",
-              maxLines: _isExpanded ? 100 : maxLinesWhenCollapsed,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade800,
-                height: 1.2,
-              ),
-              textAlign: isDescriptionArabic ? TextAlign.right : TextAlign.left,
-            ),
-          ),
-        ),
-        if (hasLongText)
-          Padding(
-            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 4),
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isExpanded = !_isExpanded;
-                });
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                textDirection: isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
-                children: [
-                  Text(
-                    _isExpanded ? (isDescriptionArabic ? 'عرض أقل' : 'Show less') :
-                    (isDescriptionArabic ? 'عرض المزيد' : 'Show more'),
-                    style: TextStyle(
-                      color: accent,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 11,
-                    ),
-                  ),
-                  Icon(
-                    _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                    size: 14,
-                    color: accent,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        // Add the tags row here
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: _buildTagsRow(isDarkMode, isDescriptionArabic),
-        ),
-      ],
-    );
-  }
-
   bool isArabicText(String text) {
     if (text.isEmpty) return false;
 
@@ -568,52 +624,65 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
     final firstChar = trimmed.codeUnitAt(0);
     return firstChar >= 0x0600 && firstChar <= 0x06FF;
   }
-// Updated _buildHeader method for ServicePostCard
+
   Widget _buildMedia() {
     if (widget.servicePost.photos == null ||
         widget.servicePost.photos!.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // No extra spacing - directly connect to the content
-    return Hero(
-      tag: 'photo_${widget.servicePost.id}',
-      child: ImageGrid(
-        imageUrls: widget.servicePost.photos!
-            .map((photo) => '${photo.src}')
-            .toList() ?? [],
-        uniqueId: 'post_${widget.servicePost.id}',
-        maxHeight: 350, // Slightly reduced height
-        onVideoReelsTap: _openVideoInReels, // Add reels navigation callback
+    // Enhanced styling for media display
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
+      child: Hero(
+        tag: 'list_photo_${widget.servicePost.id}',
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(4),
+          ),
+          child: ImageGrid(
+            imageUrls: widget.servicePost.photos!
+                .map((photo) => '${photo.src}')
+                .toList() ?? [],
+            uniqueId: 'post_${widget.servicePost.id}',
+            maxHeight: 320, // Adjusted height for better proportion
+            onVideoReelsTap: _openVideoInReels,
+          ),
+        ),
       ),
     );
   }
 
-  // New method to handle opening videos in reels mode
+  // Method to handle opening videos in reels mode
   void _openVideoInReels(String videoUrl) {
     // Extract post ID from the current post
     final postId = widget.servicePost.id.toString();
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) =>
-            ReelsHomeScreen(
-              userId: widget.userProfileId,
-              user: widget.user,
-              postId: postId, // Pass the post ID to open directly in reels
-              servicePost: widget.servicePost, // Pass the full post if needed
-            ),
+        builder: (context) => ReelsHomeScreen(
+          userId: widget.userProfileId,
+          user: widget.user,
+          postId: postId,
+          servicePost: widget.servicePost,
+        ),
       ),
     );
   }
 
   Widget _buildFooter(bool isDarkMode) {
-    final dividerColor = isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200;
-    final backgroundColor = isDarkMode
-        ? Colors.grey.shade900.withOpacity(0.3)
-        : Colors.grey.shade50;
+    final theme = Theme.of(context);
+    final dividerColor = isDarkMode
+        ? Colors.grey.shade800
+        : Colors.grey.shade200;
 
-    // Always show the interaction row
+    // Enhanced background for better visual separation
+    final backgroundColor = isDarkMode
+        ? theme.cardColor.withOpacity(0.5)
+        : Color(0xFFE1E1E1);
+
+    // Always show the interaction row with improved styling
     return Container(
       decoration: BoxDecoration(
         color: backgroundColor,
@@ -624,11 +693,11 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
           ),
         ),
         borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(8),
-          bottomRight: Radius.circular(8),
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(16),
         ),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 11),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
@@ -645,7 +714,7 @@ class _ServicePostCardState extends State<ServicePostCard> with SingleTickerProv
           ),
           _buildDivider(dividerColor),
           _buildInteractionButton(
-            icon: Icons.favorite_border_outlined,
+            icon: Icons.favorite_border_rounded,
             label: formatNumber(widget.servicePost.favoritesCount ?? 0),
             iconColor: widget.servicePost.isFavorited == true
                 ? Colors.redAccent

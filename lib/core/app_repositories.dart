@@ -6,6 +6,7 @@ import 'package:talabna/data/repositories/authentication_repository.dart';
 import 'package:talabna/data/repositories/categories_repository.dart';
 import 'package:talabna/data/repositories/comment_repository.dart';
 import 'package:talabna/data/repositories/notification_repository.dart';
+import 'package:talabna/data/repositories/point_transaction_repository.dart';
 import 'package:talabna/data/repositories/purchase_request_repository.dart';
 import 'package:talabna/data/repositories/report_repository.dart';
 import 'package:talabna/data/repositories/service_post_repository.dart';
@@ -25,6 +26,7 @@ class AppRepositories {
   final UserContactRepository userContactRepository;
   final ReportRepository reportRepository;
   final PurchaseRequestRepository purchaseRequestRepository;
+  final PointTransactionRepository pointTransactionRepository;
 
   const AppRepositories._({
     required this.authenticationRepository,
@@ -37,6 +39,7 @@ class AppRepositories {
     required this.userContactRepository,
     required this.reportRepository,
     required this.purchaseRequestRepository,
+    required this.pointTransactionRepository,
   });
 
   static Future<AppRepositories> initialize() async {
@@ -61,6 +64,7 @@ class AppRepositories {
           userContactRepository: UserContactRepository(),
           reportRepository: ReportRepository(),
           purchaseRequestRepository: PurchaseRequestRepository(),
+          pointTransactionRepository: PointTransactionRepository(),
         );
       } else {
         // Fallback to direct instantiation
@@ -69,9 +73,9 @@ class AppRepositories {
 
         // Create the remote and local data sources manually
         final sharedPreferences =
-            GetIt.instance.isRegistered<SharedPreferences>()
-                ? serviceLocator<SharedPreferences>()
-                : null;
+        GetIt.instance.isRegistered<SharedPreferences>()
+            ? serviceLocator<SharedPreferences>()
+            : null;
 
         // Create repositories with manual dependency injection
         // Note: This is a temporary solution until the service locator is fully set up
@@ -88,6 +92,7 @@ class AppRepositories {
           userContactRepository: UserContactRepository(),
           reportRepository: ReportRepository(),
           purchaseRequestRepository: PurchaseRequestRepository(),
+          pointTransactionRepository: PointTransactionRepository(),
         );
       }
     } catch (e) {
@@ -108,6 +113,7 @@ class AppRepositories {
         userContactRepository: UserContactRepository(),
         reportRepository: ReportRepository(),
         purchaseRequestRepository: PurchaseRequestRepository(),
+        pointTransactionRepository: PointTransactionRepository(),
       );
     }
   }

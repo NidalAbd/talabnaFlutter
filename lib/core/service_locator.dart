@@ -8,6 +8,7 @@ import 'package:talabna/blocs/comments/comment_bloc.dart';
 import 'package:talabna/blocs/internet/internet_bloc.dart';
 import 'package:talabna/blocs/notification/notifications_bloc.dart';
 import 'package:talabna/blocs/other_users/user_profile_bloc.dart';
+import 'package:talabna/blocs/point_transaction/point_transaction_bloc.dart'; // Add this import
 import 'package:talabna/blocs/purchase_request/purchase_request_bloc.dart';
 import 'package:talabna/blocs/report/report_bloc.dart';
 import 'package:talabna/blocs/service_post/service_post_bloc.dart';
@@ -22,6 +23,7 @@ import 'package:talabna/data/repositories/authentication_repository.dart';
 import 'package:talabna/data/repositories/categories_repository.dart';
 import 'package:talabna/data/repositories/comment_repository.dart';
 import 'package:talabna/data/repositories/notification_repository.dart';
+import 'package:talabna/data/repositories/point_transaction_repository.dart'; // Add this import
 import 'package:talabna/data/repositories/purchase_request_repository.dart';
 import 'package:talabna/data/repositories/report_repository.dart';
 import 'package:talabna/data/repositories/service_post_repository.dart';
@@ -32,6 +34,9 @@ import 'package:talabna/data/repositories/user_profile_repository.dart';
 import 'package:talabna/theme_cubit.dart';
 import 'package:talabna/utils/debug_logger.dart';
 
+import '../blocs/font_size/font_size_bloc.dart';
+import '../blocs/font_size/font_size_event.dart';
+import '../services/font_size_service.dart';
 import 'deep_link_service.dart';
 import 'navigation_service.dart';
 
@@ -45,6 +50,9 @@ Future<void> setupServiceLocator() async {
   final sharedPreferences = await SharedPreferences.getInstance();
   serviceLocator.registerSingleton<SharedPreferences>(sharedPreferences);
   serviceLocator.registerLazySingleton<http.Client>(() => http.Client());
+  serviceLocator.registerFactory<FontSizeBloc>(
+        () => FontSizeBloc()..add(FontSizeInitialized()),
+  );
 
   // 🚀 Services
   serviceLocator
@@ -54,131 +62,143 @@ Future<void> setupServiceLocator() async {
 
   // 🗂 Data Sources
   serviceLocator.registerLazySingleton<RemoteCategoryDataSource>(
-    () => RemoteCategoryDataSource(),
+        () => RemoteCategoryDataSource(),
   );
   serviceLocator.registerLazySingleton<LocalCategoryDataSource>(
-    () => LocalCategoryDataSource(
+        () => LocalCategoryDataSource(
         sharedPreferences: serviceLocator<SharedPreferences>()),
   );
 
   // 📦 Repositories
   serviceLocator.registerLazySingleton<CategoriesRepository>(
-    () => CategoriesRepository(
+        () => CategoriesRepository(
       remoteDataSource: serviceLocator<RemoteCategoryDataSource>(),
       localDataSource: serviceLocator<LocalCategoryDataSource>(),
     ),
   );
 
   serviceLocator.registerLazySingleton<ServicePostRepository>(
-    () => ServicePostRepository(),
+        () => ServicePostRepository(),
   );
 
   serviceLocator.registerLazySingleton<AuthenticationRepository>(
-    () => AuthenticationRepository(),
+        () => AuthenticationRepository(),
   );
 
   serviceLocator.registerLazySingleton<UserProfileRepository>(
-    () => UserProfileRepository(),
+        () => UserProfileRepository(),
   );
 
   serviceLocator.registerFactory<NetworkBloc>(
-    () => NetworkBloc(),
+        () => NetworkBloc(),
   );
 
   serviceLocator.registerLazySingleton<PurchaseRequestRepository>(
-    () => PurchaseRequestRepository(),
+        () => PurchaseRequestRepository(),
+  );
+
+  // Register Point Transaction Repository
+  serviceLocator.registerLazySingleton<PointTransactionRepository>(
+        () => PointTransactionRepository(),
   );
 
   serviceLocator.registerLazySingleton<UserFollowRepository>(
-    () => UserFollowRepository(),
+        () => UserFollowRepository(),
   );
 
   serviceLocator.registerLazySingleton<UserContactRepository>(
-    () => UserContactRepository(),
+        () => UserContactRepository(),
   );
 
   serviceLocator.registerLazySingleton<CommentRepository>(
-    () => CommentRepository(),
+        () => CommentRepository(),
   );
 
   serviceLocator.registerLazySingleton<ReportRepository>(
-    () => ReportRepository(),
+        () => ReportRepository(),
   );
 
   serviceLocator.registerLazySingleton<NotificationRepository>(
-    () => NotificationRepository(),
+        () => NotificationRepository(),
   );
 
   // 📌 Blocs
   serviceLocator.registerFactory<SubcategoryBloc>(
-    () => SubcategoryBloc(
+        () => SubcategoryBloc(
       categoriesRepository: serviceLocator<CategoriesRepository>(),
       localDataSource: serviceLocator<LocalCategoryDataSource>(),
     ),
   );
 
   serviceLocator.registerFactory<ServicePostBloc>(
-    () => ServicePostBloc(
+        () => ServicePostBloc(
       servicePostRepository: serviceLocator<ServicePostRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<AuthenticationBloc>(
-    () => AuthenticationBloc(
+        () => AuthenticationBloc(
       authenticationRepository: serviceLocator<AuthenticationRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<UserProfileBloc>(
-    () => UserProfileBloc(
+        () => UserProfileBloc(
       repository: serviceLocator<UserProfileRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<OtherUserProfileBloc>(
-    () => OtherUserProfileBloc(
+        () => OtherUserProfileBloc(
       repository: serviceLocator<UserProfileRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<PurchaseRequestBloc>(
-    () => PurchaseRequestBloc(
+        () => PurchaseRequestBloc(
       repository: serviceLocator<PurchaseRequestRepository>(),
     ),
   );
 
+  // Register Point Transaction Bloc
+  serviceLocator.registerFactory<PointTransactionBloc>(
+        () => PointTransactionBloc(
+      repository: serviceLocator<PointTransactionRepository>(),
+    ),
+  );
+
   serviceLocator.registerFactory<UserFollowBloc>(
-    () => UserFollowBloc(
+        () => UserFollowBloc(
       repository: serviceLocator<UserFollowRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<UserActionBloc>(
-    () => UserActionBloc(
+        () => UserActionBloc(
       repository: serviceLocator<UserFollowRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<UserContactBloc>(
-    () => UserContactBloc(
+        () => UserContactBloc(
       repository: serviceLocator<UserContactRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<CommentBloc>(
-    () => CommentBloc(
+        () => CommentBloc(
       commentRepository: serviceLocator<CommentRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<ReportBloc>(
-    () => ReportBloc(
+        () => ReportBloc(
       repository: serviceLocator<ReportRepository>(),
     ),
   );
 
   serviceLocator.registerFactory<talabnaNotificationBloc>(
-    () => talabnaNotificationBloc(
+        () => talabnaNotificationBloc(
       notificationRepository: serviceLocator<NotificationRepository>(),
     ),
   );

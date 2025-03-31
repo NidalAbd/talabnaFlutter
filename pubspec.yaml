@@ -3,7 +3,7 @@ description: Talbna is a versatile app that allows users to post and browse vari
 
 publish_to: 'none'
 
-version: 2.2.0+1
+version: 1.3.2+45  # format is [version name]+[version code]
 
 environment:
   sdk: ^3.6.2
@@ -67,9 +67,9 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   shimmer: ^3.0.0
   app_links: ^6.4.0
-  package_info_plus: ^8.3.0
   flutter_native_splash: ^2.4.4
-  # device_info_plus: ^9.0.0  # Commented out as it was causing issues
+  package_info_plus: ^8.3.0
+
 
 dev_dependencies:
   flutter_test:
@@ -83,47 +83,22 @@ flutter:
     - assets/
 
 flutter_native_splash:
-  # Background color
-  color: "#FFFFFF"
-  # Background color for dark mode
-  color_dark: "#121212"
+  # Dark background color
+  color: "#000000"
 
-  # Image source
+  # Your Talabna logo
   image: assets/images/splash_logo.png
-  # Image for dark mode (optional)
-  image_dark: assets/images/splash_logo_dark.png
-
-  # For branding position
-  branding: assets/images/branding.png
-  # Branding for dark mode
-  branding_dark: assets/images/branding_dark.png
+  image_dark: assets/images/splash_logo.png
 
   # Android 12+ specific settings
   android_12:
-    # Image source for Android 12 splash screen
-    image: assets/images/logo.png
-    # Image for dark mode
-    image_dark: assets/images/logo.png
-    # Icon background color
-    icon_background_color: "#FFFFFF"
-    # Icon background color for dark mode
+    image: assets/images/splash_logo.png
+    image_dark: assets/images/splash_logo.png
+    icon_background_color: "#121212"
     icon_background_color_dark: "#121212"
-    # Branding
-    branding: assets/images/branding.png
-    # Branding for dark mode
-    branding_dark: assets/images/branding_dark.png
 
-  # Disable the iOS status bar
+  # Other settings
   fullscreen: true
-
-  # Web splash (for PWA)
   web: false
-
-  # Add splash to all platforms
   android: true
   ios: true
-
-  # Disable splash for desktop
-  windows: false
-  macos: false
-  linux: false

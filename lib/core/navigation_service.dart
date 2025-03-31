@@ -31,11 +31,12 @@ class NavigationService {
   final List<_PendingNavigation> _pendingNavigations = [];
   Timer? _processingLockTimer;
   Timer? _queueProcessingTimer;
-
   // Deep link state getters
   bool get isProcessingDeepLink => _isProcessingDeepLink;
-
+  final Map<String, Map<String, dynamic>> _routeHistory = {};
   bool get isAppReady => _appReady;
+  bool _isOpeningFromDeepLink = false;
+  bool get isOpeningFromDeepLink => _isOpeningFromDeepLink;
 
   // Initialize the service with navigator key
   void initialize(GlobalKey<NavigatorState> key) {
@@ -45,6 +46,13 @@ class NavigationService {
 
     // Start queue processor
     _startQueueProcessor();
+  }
+
+  void setOpeningFromDeepLink(bool value) {
+    _isOpeningFromDeepLink = value;
+    if (value) {
+      DebugLogger.log('App is opening from a deep link', category: 'DEEPLINK');
+    }
   }
 
   // Set app as ready to process deep links
@@ -82,45 +90,92 @@ class NavigationService {
     });
   }
 
-  // Force release navigation locks
+// In NavigationService class
+
   void forceReleaseLocks() {
     _isProcessingDeepLink = false;
     _processingLockTimer?.cancel();
     DebugLogger.log('Navigation locks forcefully released',
         category: 'NAVIGATION');
+    Future.delayed(Duration(milliseconds: 300), () {
+      _processNextPendingNavigation();
+    });
   }
 
   // Process a deep link string
   Future<bool> processDeepLink(String link) async {
     DebugLogger.log('Processing deep link: $link', category: 'NAVIGATION');
+    setOpeningFromDeepLink(true);
+    try {
+      final linkData = _extractLinkData(link);
+      if (linkData == null) {
+        setOpeningFromDeepLink(false);
+        return false;
+      }
 
-    final linkData = _extractLinkData(link);
-    if (linkData == null) {
-      DebugLogger.log('Could not extract data from link: $link',
+      final type = linkData.type;
+      final id = linkData.id;
+
+      DebugLogger.log('Extracted deep link data: type=$type, id=$id',
           category: 'NAVIGATION');
+
+      // Store in SharedPreferences for persistence
+      await _storeDeepLinkData(type, id);
+
+      // Handle based on app readiness
+      if (_appReady && !_isProcessingDeepLink) {
+        return await _navigateToContent(type, id);
+      } else {
+        // Queue for later processing
+        _pendingNavigations
+            .add(_PendingNavigation(type: type, id: id, isDeepLink: true));
+        DebugLogger.log('App not ready, queued navigation: $type/$id',
+            category: 'NAVIGATION');
+        return true;
+      }
+
+      Future.delayed(Duration(seconds: 3), () {
+        setOpeningFromDeepLink(false);
+      });
+
+      return true;
+    } catch (e) {
+      setOpeningFromDeepLink(false);
+
       return false;
     }
+  }
 
-    final type = linkData.type;
-    final id = linkData.id;
+  // In NavigationService class
+  void setupDeepLinkNavigationStack() {
+    // Store a home route as the base of the navigation stack
+    SharedPreferences.getInstance().then((prefs) {
+      final userId = prefs.getInt('userId') ?? 0;
+      if (userId > 0) {
+        setRouteHistory('home', {'userId': userId});
+        DebugLogger.log('Set up deep link navigation stack with home base',
+            category: 'NAVIGATION');
+      }
+    });
+  }
 
-    DebugLogger.log('Extracted deep link data: type=$type, id=$id',
+  // Map to keep track of route history
+
+// Add a route to history
+  void setRouteHistory(String route, Map<String, dynamic> args) {
+    _routeHistory[route] = args;
+    DebugLogger.log('Added route to history: $route with args: $args',
         category: 'NAVIGATION');
+  }
 
-    // Store in SharedPreferences for persistence
-    await _storeDeepLinkData(type, id);
+// Get route history
+  Map<String, dynamic>? getRouteHistoryArgs(String route) {
+    return _routeHistory[route];
+  }
 
-    // Handle based on app readiness
-    if (_appReady && !_isProcessingDeepLink) {
-      return await _navigateToContent(type, id);
-    } else {
-      // Queue for later processing
-      _pendingNavigations
-          .add(_PendingNavigation(type: type, id: id, isDeepLink: true));
-      DebugLogger.log('App not ready, queued navigation: $type/$id',
-          category: 'NAVIGATION');
-      return true;
-    }
+// Check if route exists in history
+  bool hasRouteInHistory(String route) {
+    return _routeHistory.containsKey(route);
   }
 
   // Extract link data from a deep link
@@ -264,7 +319,7 @@ class NavigationService {
         // We need to use the home route first, then let it handle reels navigation
         _navigatorKey.currentState!.pushNamedAndRemoveUntil(
           '/home',
-          (route) => false,
+              (route) => false,
           arguments: {'userId': userId},
         );
 
@@ -348,7 +403,7 @@ class NavigationService {
     if (_navigatorKey.currentState != null) {
       _navigatorKey.currentState!.pushNamedAndRemoveUntil(
         '/home',
-        (route) => false,
+            (route) => false,
         arguments: {'userId': userId},
       );
     } else {

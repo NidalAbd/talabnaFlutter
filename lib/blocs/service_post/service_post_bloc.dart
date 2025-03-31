@@ -34,7 +34,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
   // LRU tracking for category access
   final LinkedHashMap<int, DateTime> _recentlyAccessedCategories =
-      LinkedHashMap<int, DateTime>();
+  LinkedHashMap<int, DateTime>();
   final int _maxCachedCategories = 3; // Keep at most 3 categories in memory
 
   // Set to store deleted post IDs for consistent UI updates
@@ -177,7 +177,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
       GetAllServicePostsEvent event, Emitter<ServicePostState> emit) async {
     // Ensure cache is initialized
 
-    emit(const ServicePostLoading(event: 'GetAllServicePostsEvent'));
+    emit( ServicePostLoading(event: 'GetAllServicePostsEvent'));
 
     if (state is ServicePostLoadSuccess &&
         (state as ServicePostLoadSuccess).hasReachedMax) {
@@ -237,7 +237,6 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
   Future<void> _handleGetServicePostByIdEvent(
       GetServicePostByIdEvent event, Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'GetServicePostByIdEvent'));
 
     final cacheKey = 'post_${event.id}';
 
@@ -254,7 +253,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     try {
       // Always fetch from API
       final ServicePost servicePost =
-          await servicePostRepository.getServicePostById(event.id);
+      await servicePostRepository.getServicePostById(event.id);
 
       // Mark post as valid for deep links
       if (servicePost.id != null) {
@@ -304,7 +303,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   // Handler for LoadOldOrNewFormEvent
   Future<void> _handleLoadOldOrNewFormEvent(
       LoadOldOrNewFormEvent event, Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'LoadOldOrNewForm'));
+    emit( ServicePostLoading(event: 'LoadOldOrNewForm'));
 
     try {
       ServicePost? servicePost;
@@ -326,7 +325,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
       Emitter<ServicePostState> emit) async {
     // Ensure cache is initialized
 
-    emit(const ServicePostLoading(event: 'GetServicePostByFavouriteEvent'));
+    emit( ServicePostLoading(event: 'GetServicePostByFavouriteEvent'));
 
     final userId = event.userId;
     final page = event.page;
@@ -372,7 +371,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     try {
       if (state is! ServicePostLoadSuccess || page == 1) {
         final servicePosts =
-            await servicePostRepository.getServicePostsByUserFavourite(
+        await servicePostRepository.getServicePostsByUserFavourite(
           page: page,
           userId: userId,
         );
@@ -396,7 +395,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
       } else {
         final currentState = state as ServicePostLoadSuccess;
         final servicePosts =
-            await servicePostRepository.getServicePostsByUserFavourite(
+        await servicePostRepository.getServicePostsByUserFavourite(
           page: page,
           userId: userId,
         );
@@ -459,24 +458,28 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     }
   }
 
+
+
+// Then update the handler method in ServicePostBloc
   Future<void> _handleGetServicePostsByCategoryEvent(
-      GetServicePostsByCategoryEvent event,
-      Emitter<ServicePostState> emit) async {
-    final category = event.category;
-    final page = event.page;
+      GetServicePostsByCategoryEvent event, Emitter<ServicePostState> emit) async {
 
     // Only show loading for the first page if showLoadingState is true
-    if (page == 1 && event.showLoadingState) {
-      emit(const ServicePostLoading(event: 'GetServicePostsByCategoryEvent'));
+    if (event.page == 1 && event.showLoadingState) {
+      emit( ServicePostLoading(event: 'GetServicePostsByCategoryEvent'));
     }
 
     // Create a unique request key that includes all relevant parameters
-    final cacheKey = 'category_${category}_page${page}_${event.forceRefresh}';
+    final filterParam = event.typeFilter != null ? '_type_${event.typeFilter}' : '';
+    final priceParam = (event.minPrice != null && event.maxPrice != null)
+        ? '_price_${event.minPrice!.toInt()}_${event.maxPrice!.toInt()}'
+        : '';
+    final cacheKey = 'category_${event.category}_page${event.page}${filterParam}${priceParam}_${event.forceRefresh}';
 
     // Check if this exact request is already in progress
     if (_requestsInProgress[cacheKey] == true) {
       DebugLogger.log(
-          'Request already in progress for category $category page $page',
+          'Request already in progress for category ${event.category} page ${event.page}',
           category: 'SERVICE_POST_BLOC');
       return; // Skip this request
     }
@@ -485,40 +488,54 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     _requestsInProgress[cacheKey] = true;
 
     try {
-      // Always fetch from API for fresh data
+      // Always fetch from API for fresh data with filters
       final stopwatch = Stopwatch()..start();
 
       final servicePosts =
-          await servicePostRepository.getServicePostsByCategory(
-        categories: category,
-        page: page,
+      await servicePostRepository.getServicePostsByCategory(
+        categories: event.category,
+        page: event.page,
+        type: event.typeFilter,
+        minPrice: event.minPrice,
+        maxPrice: event.maxPrice,
       );
 
       stopwatch.stop();
       DebugLogger.log(
-          'Fetched ${servicePosts.length} posts for category $category in ${stopwatch.elapsedMilliseconds}ms',
+          'Fetched ${servicePosts.length} posts for category ${event.category} in ${stopwatch.elapsedMilliseconds}ms',
           category: 'SERVICE_POST_BLOC');
 
-      // Cache first page results
-      if (page == 1) {
-        _categoryPostsCache[category] = servicePosts;
+      // Cache first page results with filter parameters in the key
+      if (event.page == 1) {
+        final cacheName = 'category_${event.category}${filterParam}${priceParam}';
+        _filteredPostsCache[cacheName] = servicePosts;
+
+        // If no filters, also cache in the traditional category cache
+        if (event.typeFilter == null && event.minPrice == null && event.maxPrice == null) {
+          _categoryPostsCache[event.category] = servicePosts;
+        }
+
         // Update LRU tracking
-        _updateRecentlyAccessedCategories(category);
+        _updateRecentlyAccessedCategories(event.category);
       }
 
       final filteredPosts = servicePosts
           .where((post) => !_deletedPostIds.contains(post.id))
           .toList();
 
+      // Changed: Only mark as reached max if we received an empty list from the server
+      // This allows pagination to continue as long as the server returns posts
+      final bool hasReachedMax = filteredPosts.isEmpty;
+
       DebugLogger.log(
-          'Emitting state with ${filteredPosts.length} posts for category $category page $page',
+          'Emitting state with ${filteredPosts.length} posts for category ${event.category} page ${event.page}, hasReachedMax: $hasReachedMax',
           category: 'SERVICE_POST_BLOC');
 
       // For first page, always replace existing posts
-      if (page == 1) {
+      if (event.page == 1) {
         emit(ServicePostLoadSuccess(
             servicePosts: filteredPosts,
-            hasReachedMax: filteredPosts.isEmpty || filteredPosts.length < 10,
+            hasReachedMax: hasReachedMax,
             event: 'GetServicePostsByCategoryEvent'));
       }
       // For pagination, append posts to existing list
@@ -529,8 +546,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
           emit(currentState.copyWith(hasReachedMax: true));
         } else {
           // Get the current posts
-          final currentPosts =
-              List<ServicePost>.from(currentState.servicePosts);
+          final currentPosts = List<ServicePost>.from(currentState.servicePosts);
 
           // Append the new posts
           currentPosts.addAll(filteredPosts);
@@ -538,7 +554,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
           // Emit the updated state
           emit(ServicePostLoadSuccess(
             servicePosts: currentPosts,
-            hasReachedMax: filteredPosts.length < 10,
+            hasReachedMax: hasReachedMax,
             event: 'GetServicePostsByCategoryEvent',
           ));
         }
@@ -546,39 +562,63 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         // Fallback case
         emit(ServicePostLoadSuccess(
             servicePosts: filteredPosts,
-            hasReachedMax: filteredPosts.isEmpty || filteredPosts.length < 10,
+            hasReachedMax: hasReachedMax,
             event: 'GetServicePostsByCategoryEvent'));
       }
     } catch (e) {
       DebugLogger.log('Error fetching service posts: $e',
           category: 'SERVICE_POST_BLOC');
 
-      // If we have cached data for this category, use it despite the error
-      if (page == 1 && _categoryPostsCache.containsKey(category)) {
-        final cachedPosts = _categoryPostsCache[category]!;
-        final filteredPosts = cachedPosts
-            .where((post) => !_deletedPostIds.contains(post.id))
-            .toList();
+      // If we have cached data for this category with the same filters, use it despite the error
+      if (event.page == 1) {
+        final cacheKey = 'category_${event.category}${filterParam}${priceParam}';
 
-        DebugLogger.log('Using cached posts after API error',
-            category: 'SERVICE_POST_BLOC');
+        if (_filteredPostsCache.containsKey(cacheKey)) {
+          final cachedPosts = _filteredPostsCache[cacheKey]!;
+          final filteredPosts = cachedPosts
+              .where((post) => !_deletedPostIds.contains(post.id))
+              .toList();
 
-        emit(ServicePostLoadSuccess(
-          servicePosts: filteredPosts,
-          hasReachedMax: true, // Mark as reached max when using fallback cache
-          event: 'GetServicePostsByCategoryEvent',
-        ));
-      } else {
-        emit(ServicePostLoadFailure(
-            errorMessage: e.toString(),
-            event: 'GetServicePostsByCategoryEvent'));
+          DebugLogger.log('Using cached posts after API error',
+              category: 'SERVICE_POST_BLOC');
+
+          emit(ServicePostLoadSuccess(
+            servicePosts: filteredPosts,
+            hasReachedMax: true, // Mark as reached max when using fallback cache
+            event: 'GetServicePostsByCategoryEvent',
+          ));
+          return;
+        }
+
+        // If no filtered cache exists but we have a regular category cache, use that
+        if (_categoryPostsCache.containsKey(event.category) &&
+            event.typeFilter == null && event.minPrice == null && event.maxPrice == null) {
+
+          final cachedPosts = _categoryPostsCache[event.category]!;
+          final filteredPosts = cachedPosts
+              .where((post) => !_deletedPostIds.contains(post.id))
+              .toList();
+
+          DebugLogger.log('Using category cache after API error',
+              category: 'SERVICE_POST_BLOC');
+
+          emit(ServicePostLoadSuccess(
+            servicePosts: filteredPosts,
+            hasReachedMax: true, // Mark as reached max when using fallback cache
+            event: 'GetServicePostsByCategoryEvent',
+          ));
+          return;
+        }
       }
+
+      emit(ServicePostLoadFailure(
+          errorMessage: e.toString(),
+          event: 'GetServicePostsByCategoryEvent'));
     } finally {
-      // Always mark the request as completed, regardless of success or failure
+      // Always mark the request as completed
       _requestsInProgress[cacheKey] = false;
     }
   }
-
 // Helper method for fetching and updating category posts
   Future<void> _fetchAndUpdateCategoryPosts(int category, int page,
       Emitter<ServicePostState> emit, bool emitState) async {
@@ -596,7 +636,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
       // Always get fresh data from API
       final servicePosts =
-          await servicePostRepository.getServicePostsByCategory(
+      await servicePostRepository.getServicePostsByCategory(
         page: page,
         categories: category,
       );
@@ -698,7 +738,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
       GetServicePostsRealsEvent event, Emitter<ServicePostState> emit) async {
     // Always show loading for first page (unless preload)
     if (event.page == 1 && !event.preloadOnly) {
-      emit(const ServicePostLoading(event: 'GetServicePostsForReals'));
+      emit( ServicePostLoading(event: 'GetServicePostsForReals'));
     }
 
     final cacheKey = 'reals_page${event.page}';
@@ -735,7 +775,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         // For first page, show proper error
         emit(ServicePostLoadFailure(
             errorMessage:
-                'Rate limit reached. Please try again in ${waitTime.inSeconds} seconds.',
+            'Rate limit reached. Please try again in ${waitTime.inSeconds} seconds.',
             event: 'GetServicePostsForReals'));
       }
 
@@ -748,7 +788,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
                 page: event.page,
                 preloadOnly: event.preloadOnly,
                 bypassRateLimit: true // Bypass rate limit check for retry
-                ));
+            ));
           }
         });
       }
@@ -812,10 +852,10 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         } else {
           // For subsequent pages, append unique posts
           final currentPostIds =
-              currentState.servicePosts.map((p) => p.id).toSet();
+          currentState.servicePosts.map((p) => p.id).toSet();
           final uniqueNewPosts = filteredPosts
               .where((post) =>
-                  post.id != null && !currentPostIds.contains(post.id))
+          post.id != null && !currentPostIds.contains(post.id))
               .toList();
 
           if (uniqueNewPosts.isEmpty) {
@@ -881,7 +921,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
                   page: event.page,
                   preloadOnly: event.preloadOnly,
                   bypassRateLimit: true // Bypass rate limit check for retry
-                  ));
+              ));
             }
           });
         }
@@ -895,7 +935,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
           } else {
             emit(ServicePostLoadFailure(
                 errorMessage:
-                    'Failed to load reels. Please check your connection and try again.',
+                'Failed to load reels. Please check your connection and try again.',
                 event: 'GetServicePostsForReals'));
           }
         }
@@ -930,7 +970,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
       // Check if we have any new posts that aren't already in the state
       final Set<int> existingIds =
-          currentPosts.map((post) => post.id).whereType<int>().toSet();
+      currentPosts.map((post) => post.id).whereType<int>().toSet();
 
       final List<ServicePost> uniqueNewPosts = newPosts
           .where((post) => post.id != null && !existingIds.contains(post.id))
@@ -960,97 +1000,59 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     }
   }
 
-  // Handler for GetServicePostsByCategorySubCategoryEvent
-  Future<void> _handleGetServicePostsByCategorySubCategoryEvent(
-      GetServicePostsByCategorySubCategoryEvent event,
-      Emitter<ServicePostState> emit) async {
-    final category = event.category;
-    final subCategory = event.subCategory;
-    final page = event.page;
-    final forceRefresh = event.forceRefresh;
+// Define a cache structure that uses string keys
+// Add this in the ServicePostBloc class declaration
+  final Map<String, List<ServicePost>> _filteredPostsCache = {};
 
-    // Only show loading for non-background refreshes
-    if (!forceRefresh) {
-      emit(const ServicePostLoading(
-          event: 'GetServicePostsByCategorySubCategory'));
-    }
+// Then update the helper method:
+  Future<void> _fetchAndUpdateSubcategoryPosts(
+      int category,
+      int subCategory,
+      int page,
+      Emitter<ServicePostState> emit,
+      bool emitState,
+      String? typeFilter,
+      double? minPrice,
+      double? maxPrice) async {
 
-    // Don't fetch if we've reached the max
-    if (state is ServicePostLoadSuccess &&
-        (state as ServicePostLoadSuccess).hasReachedMax &&
-        (state as ServicePostLoadSuccess).event ==
-            'GetServicePostsByCategorySubCategory') {
-      return;
-    }
+    // Create a unique cache key that includes filter params
+    final filterParam = typeFilter != null ? '_type_${typeFilter}' : '';
+    final priceParam = (minPrice != null && maxPrice != null)
+        ? '_price_${minPrice.toInt()}_${maxPrice.toInt()}'
+        : '';
+    final cacheKey = 'category_${category}_subcategory_${subCategory}_page${page}${filterParam}${priceParam}';
 
-    final cacheKey =
-        'category_${category}_subcategory_${subCategory}_page${page}';
-
-    // Use cache for first page if available and not forcing refresh
-    if (page == 1 &&
-        !forceRefresh &&
-        _subcategoryPostsCache.containsKey(subCategory)) {
-      DebugLogger.log('Using cached posts for subcategory $subCategory',
-          category: 'SERVICE_POST_BLOC');
-
-      // Filter out deleted posts
-      final filteredPosts = _subcategoryPostsCache[subCategory]!
-          .where((post) => !_deletedPostIds.contains(post.id))
-          .toList();
-
-      emit(ServicePostLoadSuccess(
-          servicePosts: filteredPosts,
-          hasReachedMax: filteredPosts.length < 10,
-          event: 'GetServicePostsByCategorySubCategory'));
-
-      // If not forcing refresh, still update in background
-      if (!_pendingRequests.contains(cacheKey)) {
-        _fetchAndUpdateSubcategoryPosts(
-            category, subCategory, page, emit, false);
-      }
-
-      return;
-    }
-
-    // Check if a similar request is already in progress
-    if (_pendingRequests.contains(cacheKey)) {
-      DebugLogger.log(
-          'Skipping duplicate GetServicePostsByCategorySubCategory request',
-          category: 'SERVICE_POST_BLOC');
-      return;
-    }
-
-    await _fetchAndUpdateSubcategoryPosts(
-        category, subCategory, page, emit, true);
-  }
-
-  // Helper method for fetching and updating subcategory posts
-  Future<void> _fetchAndUpdateSubcategoryPosts(int category, int subCategory,
-      int page, Emitter<ServicePostState> emit, bool emitState) async {
-    final cacheKey =
-        'category_${category}_subcategory_${subCategory}_page${page}';
     _pendingRequests.add(cacheKey);
 
     try {
       final stopwatch = Stopwatch()..start();
 
       final servicePosts =
-          await servicePostRepository.getServicePostsByCategorySubCategory(
+      await servicePostRepository.getServicePostsByCategorySubCategory(
         categories: category,
         subCategories: subCategory,
         page: page,
+        type: typeFilter,
+        minPrice: minPrice,
+        maxPrice: maxPrice,
       );
 
       stopwatch.stop();
       DebugLogger.log(
-          'Fetched ${servicePosts.length} posts for subcategory $subCategory in ${stopwatch.elapsedMilliseconds}ms',
+          'Fetched ${servicePosts.length} posts for subcategory $subCategory with filters in ${stopwatch.elapsedMilliseconds}ms',
           category: 'SERVICE_POST_BLOC');
 
       _pendingRequests.remove(cacheKey);
 
-      // Cache first page results
+      // Cache first page results - use the string-based cache map
       if (page == 1) {
-        _subcategoryPostsCache[subCategory] = servicePosts;
+        _filteredPostsCache[cacheKey] = servicePosts;
+
+        // For backward compatibility, also cache in the subcategory cache
+        // if no filters are applied
+        if (typeFilter == null && minPrice == null && maxPrice == null) {
+          _subcategoryPostsCache[subCategory] = servicePosts;
+        }
       }
 
       // Filter out deleted posts
@@ -1096,6 +1098,77 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     }
   }
 
+// Also update the handler method to use the new cache
+  Future<void> _handleGetServicePostsByCategorySubCategoryEvent(
+      GetServicePostsByCategorySubCategoryEvent event,
+      Emitter<ServicePostState> emit) async {
+    final category = event.category;
+    final subCategory = event.subCategory;
+    final page = event.page;
+    final forceRefresh = event.forceRefresh;
+    final typeFilter = event.typeFilter;
+    final minPrice = event.minPrice;
+    final maxPrice = event.maxPrice;
+
+    // Only show loading for non-background refreshes
+    if (!forceRefresh) {
+      emit( ServicePostLoading(
+          event: 'GetServicePostsByCategorySubCategory'));
+    }
+
+    // Don't fetch if we've reached the max
+    if (state is ServicePostLoadSuccess &&
+        (state as ServicePostLoadSuccess).hasReachedMax &&
+        (state as ServicePostLoadSuccess).event ==
+            'GetServicePostsByCategorySubCategory') {
+      return;
+    }
+
+    // Create a unique cache key that includes filter params
+    final filterParam = typeFilter != null ? '_type_${typeFilter}' : '';
+    final priceParam = (minPrice != null && maxPrice != null)
+        ? '_price_${minPrice.toInt()}_${maxPrice.toInt()}'
+        : '';
+    final cacheKey = 'category_${category}_subcategory_${subCategory}_page${page}${filterParam}${priceParam}';
+
+    // Use cache for first page if available and not forcing refresh
+    if (page == 1 &&
+        !forceRefresh &&
+        _filteredPostsCache.containsKey(cacheKey)) {
+      DebugLogger.log('Using cached posts for subcategory $subCategory with filters',
+          category: 'SERVICE_POST_BLOC');
+
+      // Filter out deleted posts
+      final filteredPosts = _filteredPostsCache[cacheKey]!
+          .where((post) => !_deletedPostIds.contains(post.id))
+          .toList();
+
+      emit(ServicePostLoadSuccess(
+          servicePosts: filteredPosts,
+          hasReachedMax: filteredPosts.length < 10,
+          event: 'GetServicePostsByCategorySubCategory'));
+
+      // If not forcing refresh, still update in background
+      if (!_pendingRequests.contains(cacheKey)) {
+        _fetchAndUpdateSubcategoryPosts(
+            category, subCategory, page, emit, false, typeFilter, minPrice, maxPrice);
+      }
+
+      return;
+    }
+
+    // Check if a similar request is already in progress
+    if (_pendingRequests.contains(cacheKey)) {
+      DebugLogger.log(
+          'Skipping duplicate GetServicePostsByCategorySubCategory request',
+          category: 'SERVICE_POST_BLOC');
+      return;
+    }
+
+    await _fetchAndUpdateSubcategoryPosts(
+        category, subCategory, page, emit, true, typeFilter, minPrice, maxPrice);
+  }
+
   // Handler for GetServicePostsByUserIdEvent
   Future<void> _handleGetServicePostsByUserIdEvent(
       GetServicePostsByUserIdEvent event,
@@ -1106,7 +1179,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
     // Only show loading for non-background refreshes
     if (!forceRefresh) {
-      emit(const ServicePostLoading(event: 'GetServicePostsByUserIdEvent'));
+      emit( ServicePostLoading(event: 'GetServicePostsByUserIdEvent'));
     }
 
     // Don't fetch if we've reached the max
@@ -1216,7 +1289,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   // Handler for CreateServicePostEvent
   Future<void> _handleCreateServicePostEvent(
       CreateServicePostEvent event, Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'CreateServicePostEvent'));
+    emit( ServicePostLoading(event: 'CreateServicePostEvent'));
 
     try {
       final servicePost = await servicePostRepository.createServicePost(
@@ -1251,10 +1324,10 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
   // Handler for UpdateServicePostEvent
   Future<void> _handleUpdateServicePostEvent(
-    UpdateServicePostEvent event,
-    Emitter<ServicePostState> emit,
-  ) async {
-    emit(const ServicePostLoading(event: 'UpdateServicePostEvent'));
+      UpdateServicePostEvent event,
+      Emitter<ServicePostState> emit,
+      ) async {
+    emit( ServicePostLoading(event: 'UpdateServicePostEvent'));
 
     try {
       final bool success = await servicePostRepository.updateServicePost(
@@ -1342,7 +1415,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   // Handler for UpdatePhotoServicePostEvent
   Future<void> _handleUpdatePhotoServicePostEvent(
       UpdatePhotoServicePostEvent event, Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'UpdateServicePostEvent'));
+    emit( ServicePostLoading(event: 'UpdateServicePostEvent'));
 
     try {
       final result = await servicePostRepository.updateServicePostImage(
@@ -1355,7 +1428,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         try {
           // Fetch the updated post to replace in cache
           final post =
-              await servicePostRepository.getServicePostById(event.servicePost);
+          await servicePostRepository.getServicePostById(event.servicePost);
           if (post.id != null) {
             _postByIdCache[post.id!] = post;
           }
@@ -1377,7 +1450,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   Future<void> _handleServicePostCategoryUpdateEvent(
       ServicePostCategoryUpdateEvent event,
       Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'ServicePostCategoryUpdateEvent'));
+    emit( ServicePostLoading(event: 'ServicePostCategoryUpdateEvent'));
 
     try {
       await servicePostRepository.updateServicePostCategory(
@@ -1419,7 +1492,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   // Handler for ServicePostBadgeUpdateEvent
   Future<void> _handleServicePostBadgeUpdateEvent(
       ServicePostBadgeUpdateEvent event, Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'ServicePostBadgeUpdateEvent'));
+    emit( ServicePostLoading(event: 'ServicePostBadgeUpdateEvent'));
 
     try {
       await servicePostRepository.updateServicePostBadge(
@@ -1452,7 +1525,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
 
   Future<void> _handleDeleteServicePostEvent(
       DeleteServicePostEvent event, Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'DeleteServicePostEvent'));
+    emit( ServicePostLoading(event: 'DeleteServicePostEvent'));
 
     try {
       await servicePostRepository.deleteServicePost(
@@ -1472,7 +1545,6 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   Future<void> _handleViewIncrementServicePostEvent(
       ViewIncrementServicePostEvent event,
       Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'ViewIncrementServicePostEvent'));
 
     try {
       await servicePostRepository.viewIncrementServicePost(
@@ -1532,7 +1604,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   Future<void> _handleToggleFavoriteServicePostEvent(
       ToggleFavoriteServicePostEvent event,
       Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'ToggleFavoriteServicePostEvent'));
+    emit( ServicePostLoading(event: 'ToggleFavoriteServicePostEvent'));
 
     try {
       bool newFavoriteStatus = await servicePostRepository
@@ -1678,7 +1750,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
   // Handler for DeleteServicePostImageEvent
   Future<void> _handleDeleteServicePostImageEvent(
       DeleteServicePostImageEvent event, Emitter<ServicePostState> emit) async {
-    emit(const ServicePostLoading(event: 'DeleteServicePostImageEvent'));
+    emit( ServicePostLoading(event: 'DeleteServicePostImageEvent'));
 
     try {
       await servicePostRepository.deleteServicePostImage(
@@ -1780,7 +1852,7 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
     try {
       final stopwatch = Stopwatch()..start();
       final servicePosts =
-          await servicePostRepository.getServicePostsByCategory(
+      await servicePostRepository.getServicePostsByCategory(
         page: 1,
         categories: categoryId,
       );
@@ -1837,9 +1909,9 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         // We need category ID for the API call, so let's fetch a single post to determine it
         // This is a bit inefficient but works if we don't have the category mapping
         final posts =
-            await servicePostRepository.getServicePostsByCategorySubCategory(
+        await servicePostRepository.getServicePostsByCategorySubCategory(
           categories:
-              1, // Use a default, will be ignored by API if subcategory is found
+          1, // Use a default, will be ignored by API if subcategory is found
           subCategories: subcategoryId,
           page: 1,
         );

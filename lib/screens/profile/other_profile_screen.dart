@@ -1,3 +1,9 @@
+// The key difference is how the collapsed/expanded states are managed
+// In ProfileScreen, you're using AnimatedContainer with custom scroll detection
+// But in OtherProfileScreen, you're using SliverAppBar
+
+// Here's the fix to make OtherProfileScreen behave like ProfileScreen:
+
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -47,8 +53,12 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
   late final TabController _tabController;
   late OtherUserProfileBloc _userProfileBloc;
   late UserActionBloc _userActionBloc;
-  final ScrollController _scrollController = ScrollController();
-  bool _isTitleVisible = false;
+
+  // Simple animation parameters
+  bool _isCollapsed = false;
+  final double _headerHeight = 300.0;
+  final double _collapsedHeight = 120.0; // Height for collapsed state with app bar and tab bar
+
   bool isFollowing = false;
   bool isHimSelf = false;
 
@@ -67,19 +77,25 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
 
     // Check if the profile belongs to the current user
     isHimSelf = widget.fromUser == widget.toUser;
-
-    _scrollController.addListener(_onScroll);
   }
 
-  void _onScroll() {
-    // Adjust this value based on your design
-    if (_scrollController.offset > 200 && !_isTitleVisible) {
+  // Simplified scroll processor
+  void _processScroll(ScrollUpdateNotification notification) {
+    final scrollPosition = notification.metrics.pixels;
+    final isScrollingDown = notification.scrollDelta != null && notification.scrollDelta! > 0;
+    final isScrollingUp = notification.scrollDelta != null && notification.scrollDelta! < 0;
+
+    // Collapse header when scrolling down past threshold
+    if (isScrollingDown && scrollPosition > 50 && !_isCollapsed) {
       setState(() {
-        _isTitleVisible = true;
+        _isCollapsed = true;
       });
-    } else if (_scrollController.offset <= 200 && _isTitleVisible) {
+    }
+
+    // Expand header when scrolling back to top
+    else if (isScrollingUp && scrollPosition < 10 && _isCollapsed) {
       setState(() {
-        _isTitleVisible = false;
+        _isCollapsed = false;
       });
     }
   }
@@ -107,6 +123,15 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
     await Clipboard.setData(ClipboardData(text: text));
     if (mounted) {
       _showSnackBar('Copied to clipboard');
+    }
+  }
+
+  // Toggle follow status when user interacts with profile elements
+  void _toggleFollow() {
+    if (!isHimSelf) {
+      context.read<UserActionBloc>().add(
+        ToggleUserMakeFollowEvent(user: widget.toUser),
+      );
     }
   }
 
@@ -138,8 +163,6 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -173,63 +196,36 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
           } else if (state is OtherUserProfileLoadSuccess) {
             final user = state.user;
             return Scaffold(
-              body: NestedScrollView(
-                controller: _scrollController,
-                headerSliverBuilder:
-                    (BuildContext context, bool innerBoxIsScrolled) {
-                  return [
-                    SliverAppBar(
-                      expandedHeight: 300.0,
-                      pinned: true,
-                      title: _isTitleVisible
-                          ? Text(user.userName ?? 'Profile')
-                          : null,
-                      actions: [
-                        IconButton(
-                          icon: const Icon(Icons.more_vert),
-                          onPressed: () => _showMoreOptions(context, user),
-                        ),
-                      ],
-                      flexibleSpace: FlexibleSpaceBar(
-                        background: _buildProfileHeader(user),
-                      ),
-                      bottom: TabBar(
+              body: NotificationListener<ScrollUpdateNotification>(
+                onNotification: (notification) {
+                  _processScroll(notification);
+                  return false;
+                },
+                child: Column(
+                  children: [
+                    // Header section
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                      height: _isCollapsed ? _collapsedHeight : _headerHeight,
+                      width: double.infinity,
+                      child: _isCollapsed
+                          ? _buildCollapsedHeader(user)
+                          : _buildExpandedHeader(user),
+                    ),
+
+                    // Tab content (takes remaining screen space)
+                    Expanded(
+                      child: TabBarView(
                         controller: _tabController,
-                        labelColor: Colors.white,
-                        // Color for selected tab
-                        unselectedLabelColor: Colors.white70,
-                        // Color for unselected tabs with better visibility
-                        indicatorColor: Colors.white,
-                        // Indicator line color
-                        indicatorWeight: 3,
-                        // Make indicator more prominent
-                        labelStyle: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          // Bold text for selected tab
-                          fontSize: 14,
-                        ),
-                        unselectedLabelStyle: const TextStyle(
-                          fontWeight: FontWeight.normal,
-                          // Normal weight for unselected tabs
-                          fontSize: 14,
-                        ),
-                        tabs: [
-                          Tab(text: _language.tPostsText()),
-                          Tab(text: _language.tFollowersText()),
-                          Tab(text: _language.tFollowingText()),
-                          Tab(text: _language.tOverviewText()),
+                        children: [
+                          OtherUserPostScreen(userID: user.id, user: widget.user, primary: false),
+                          UserFollowerScreen(userID: user.id, user: user, primary: false),
+                          UserFollowingScreen(userID: user.id, user: user, primary: false),
+                          UserInfoWidget(userId: user.id, user: user),
                         ],
                       ),
                     ),
-                  ];
-                },
-                body: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    OtherUserPostScreen(userID: user.id, user: widget.user),
-                    UserFollowerScreen(userID: user.id, user: user),
-                    UserFollowingScreen(userID: user.id, user: user),
-                    UserInfoWidget(userId: user.id, user: user),
                   ],
                 ),
               ),
@@ -245,7 +241,330 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
     );
   }
 
-  Widget _buildProfileHeader(User user) {
+  // Collapsed header with app bar and tab bar
+  Widget _buildCollapsedHeader(User user) {
+    return Material(
+      color: Theme.of(context).primaryColor,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Status bar space
+          SizedBox(height: MediaQuery.of(context).padding.top),
+
+          SizedBox(
+            height: 40, // Standard app bar height
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                children: [
+                  // Back button
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                    iconSize: 24,
+                  ),
+
+                  // Profile photo
+                  GestureDetector(
+                    onTap: isHimSelf ? null : _toggleFollow,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        image: DecorationImage(
+                          image: CachedNetworkImageProvider(
+                            ProfileImageHelper.getProfileImageUrl(user.photos?.first),
+                          ),
+                          fit: BoxFit.cover,
+                        ),
+                        border: Border.all(color: Colors.white, width: 1),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Username
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: isHimSelf ? null : _toggleFollow,
+                      child: Row(
+                        children: [
+                          Text(
+                            user.userName ?? 'Profile',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+
+                          // Follow indicator
+                          if (!isHimSelf)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: Icon(
+                                isFollowing ? Icons.check_circle : Icons.add_circle_outline,
+                                color: isFollowing ? Colors.green : Colors.blue,
+                                size: 16,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // More options button
+                  IconButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    onPressed: () => _showMoreOptions(context, user),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Spacer
+          const Spacer(),
+
+          // Tab bar
+          TabBar(
+            controller: _tabController,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelStyle: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontWeight: FontWeight.normal,
+              fontSize: 14,
+            ),
+            tabs: [
+              Tab(text: _language.tPostsText()),
+              Tab(text: _language.tFollowersText()),
+              Tab(text: _language.tFollowingText()),
+              Tab(text: _language.tOverviewText()),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Expanded header with profile details
+  Widget _buildExpandedHeader(User user) {
+    return Stack(
+      children: [
+        // Background image
+        Positioned.fill(
+          child: _buildProfileBackground(user),
+        ),
+
+        // Status bar space + app bar
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+            height: 56.0 + MediaQuery.of(context).padding.top,
+            child: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  onPressed: () => _showMoreOptions(context, user),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Profile content - center aligned
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Profile Image
+              GestureDetector(
+                onTap: isHimSelf ? null : _toggleFollow,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Profile image
+                    Hero(
+                      tag: 'profile_image_${user.id}',
+                      child: CircleAvatar(
+                        radius: 45,
+                        backgroundImage: CachedNetworkImageProvider(
+                          ProfileImageHelper.getProfileImageUrl(user.photos?.first),
+                        ),
+                        onBackgroundImageError: (exception, stackTrace) =>
+                        const AssetImage('assets/images/placeholder.png'),
+                      ),
+                    ),
+
+                    // Follow indicator overlay
+                    if (!isHimSelf)
+                      AnimatedOpacity(
+                        opacity: 0.6,
+                        duration: const Duration(milliseconds: 200),
+                        child: Container(
+                          width: 90,
+                          height: 90,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isFollowing
+                                ? Colors.black.withOpacity(0.3)
+                                : Colors.blue.withOpacity(0.3),
+                          ),
+                          child: Icon(
+                            isFollowing ? Icons.check : Icons.person_add,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Username
+              GestureDetector(
+                onTap: isHimSelf ? null : _toggleFollow,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      user.userName ?? 'User Name',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    // Only show follow icon if not viewing own profile
+                    if (!isHimSelf)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8.0),
+                        child: Icon(
+                          isFollowing ? Icons.check_circle : Icons.add_circle_outline,
+                          color: isFollowing ? Colors.green : Colors.blue,
+                          size: 20,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+              // Location info (city and country)
+              if (user.city != null || user.country != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.location_on,
+                          color: Colors.white70,
+                          size: 12,
+                        ),
+                        const SizedBox(width: 2),
+                        Flexible(
+                          child: Text(
+                            _getLocationText(user),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Stats row positioned just above the tab bar
+        Positioned(
+          bottom: 48, // Position above tab bar
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildStatColumn('Posts', user.servicePostsCount ?? 0),
+                const SizedBox(width: 20),
+                _buildStatColumn('Followers', user.followersCount ?? 0),
+                const SizedBox(width: 20),
+                _buildStatColumn('Following', user.followingCount ?? 0),
+              ],
+            ),
+          ),
+        ),
+
+        // Tab bar at bottom
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            color: Colors.black26,
+            child: TabBar(
+              controller: _tabController,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              indicatorColor: Colors.white,
+              indicatorWeight: 3,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.normal,
+                fontSize: 14,
+              ),
+              tabs: [
+                Tab(text: _language.tPostsText()),
+                Tab(text: _language.tFollowersText()),
+                Tab(text: _language.tFollowingText()),
+                Tab(text: _language.tOverviewText()),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileBackground(User user) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -255,7 +574,7 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
             imageFilter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: CachedNetworkImage(
               imageUrl:
-                  ProfileImageHelper.getProfileImageUrl(user.photos!.first),
+              ProfileImageHelper.getProfileImageUrl(user.photos!.first),
               fit: BoxFit.cover,
               color: Colors.black.withOpacity(0.5),
               colorBlendMode: BlendMode.darken,
@@ -289,155 +608,42 @@ class _OtherProfileScreenState extends State<OtherProfileScreen>
           Container(
             color: Colors.grey[800],
           ),
+      ],
+    );
+  }
 
-        // Profile content
-        SingleChildScrollView(
-          physics: const NeverScrollableScrollPhysics(),
-          child: SizedBox(
-            height: 300,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Profile Picture
-                Hero(
-                  tag: 'profile_image_${user.id}',
-                  child: CircleAvatar(
-                    radius: 45, // Further reduced from 50
-                    backgroundImage: CachedNetworkImageProvider(
-                      ProfileImageHelper.getProfileImageUrl(user.photos!.first),
-                    ),
-                    onBackgroundImageError: (exception, stackTrace) =>
-                        const AssetImage('assets/images/placeholder.png'),
-                  ),
-                ),
-                const SizedBox(height: 8), // Reduced from 12
-
-                // Username
-                Text(
-                  user.userName ?? 'User Name',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20, // Reduced from 22
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-
-                // Location info (city and country)
-                if (user.city != null || user.country != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.location_on,
-                            color: Colors.white70,
-                            size: 12,
-                          ),
-                          const SizedBox(width: 2),
-                          Flexible(
-                            child: Text(
-                              _getLocationText(user),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 10,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // Follow button for other profiles
-                if (!isHimSelf)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: _buildProfileFollowButton(),
-                  ),
-
-                // Stats
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  // Reduced from 8
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildStatColumn('Posts', user.servicePostsCount ?? 0),
-                      const SizedBox(width: 20), // Reduced from 24
-                      _buildStatColumn('Followers', user.followersCount ?? 0),
-                      const SizedBox(width: 20), // Reduced from 24
-                      _buildStatColumn('Following', user.followingCount ?? 0),
-                    ],
-                  ),
-                ),
-              ],
+  Widget _buildStatColumn(String label, int count) {
+    return InkWell(
+      onTap: () {
+        // Navigate to appropriate tab based on stat
+        if (label == 'Posts') {
+          _tabController.animateTo(0);
+        } else if (label == 'Followers') {
+          _tabController.animateTo(1);
+        } else if (label == 'Following') {
+          _tabController.animateTo(2);
+        }
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            count.toString(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Column _buildStatColumn(String label, int count) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          count.toString(),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18, // Reduced from 20
-            fontWeight: FontWeight.bold,
+          SizedBox(width: 4,),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+            ),
           ),
-        ),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 12, // Reduced from 14
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProfileFollowButton() {
-    return ElevatedButton(
-      onPressed: isHimSelf
-          ? null
-          : () {
-              context.read<UserActionBloc>().add(
-                    ToggleUserMakeFollowEvent(user: widget.toUser),
-                  );
-            },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isFollowing ? Colors.grey[700] : Colors.blue,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        minimumSize: const Size(80, 24),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      child: Text(
-        isFollowing ? 'Unfollow' : 'Follow',
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
+        ],
       ),
     );
   }

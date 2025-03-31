@@ -6,29 +6,60 @@ class WhatsAppButtonWidget extends StatelessWidget {
   final String username;
   final double width;
 
-  const WhatsAppButtonWidget(
-      {super.key,
-      this.whatsAppNumber,
-      required this.username,
-      required this.width});
+  const WhatsAppButtonWidget({
+    super.key,
+    this.whatsAppNumber,
+    required this.username,
+    required this.width,
+  });
 
   String formatWhatsAppNumber(String number) {
     // Remove leading '00'
-    number = number.replaceFirst(RegExp(r'^00'), '');
-    return number;
+    return number.replaceFirst(RegExp(r'^00'), '');
   }
 
-  void launchWhatsApp() async {
-    final url = formatWhatsAppNumber(whatsAppNumber ?? 'لا يوجد بيانات');
-    if (await canLaunch('https://wa.me/$url')) {
-      await launch('https://wa.me/$url');
-    } else {
-      throw 'Could not launch WhatsApp';
+  void launchWhatsApp(BuildContext context) async {
+    if (whatsAppNumber == null || whatsAppNumber!.isEmpty) {
+      // Show a snackbar if WhatsApp number is empty
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No WhatsApp number available'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final formattedNumber = formatWhatsAppNumber(whatsAppNumber!);
+    final whatsAppUrl = 'https://wa.me/$formattedNumber';
+
+    try {
+      if (await canLaunch(whatsAppUrl)) {
+        await launch(whatsAppUrl);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch WhatsApp'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final displayText = (whatsAppNumber != null && whatsAppNumber!.isNotEmpty)
+        ? whatsAppNumber!
+        : 'No WhatsApp number';
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -40,27 +71,27 @@ class WhatsAppButtonWidget extends StatelessWidget {
             ),
           ),
         ),
-        onPressed: launchWhatsApp,
+        onPressed: () => launchWhatsApp(context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               SizedBox(width: width),
-              // Add a fixed width SizedBox before the icon
               Image.asset(
                 'assets/WhatsApp_logo.png',
                 width: 25,
                 height: 25,
               ),
               SizedBox(width: width),
-              // Add some space between the icon and text
-              Text(
-                whatsAppNumber!,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  displayText,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

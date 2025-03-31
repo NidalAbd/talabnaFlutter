@@ -48,8 +48,8 @@ class _ContactModalBottomSheetState extends State<ContactModalBottomSheet> {
                   2 /
                   8, // Set the height to 2/3 of the screen height
               color: Theme.of(context).brightness == Brightness.dark
-                  ? AppTheme.darkPrimaryColor
-                  : AppTheme.lightPrimaryColor,
+                  ? AppTheme.darkBackgroundColor
+                  : AppTheme.lightBackgroundColor,
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [

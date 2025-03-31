@@ -2,14 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:talabna/blocs/service_post/service_post_bloc.dart';
 import 'package:talabna/blocs/service_post/service_post_event.dart';
 import 'package:talabna/blocs/service_post/service_post_state.dart';
 import 'package:talabna/data/models/service_post.dart';
 import 'package:talabna/data/models/user.dart';
+import 'package:talabna/provider/language.dart';
 import 'package:talabna/screens/service_post/service_post_card.dart';
 import 'package:talabna/utils/debug_logger.dart';
 
+import '../../utils/service_post_fillter.dart';
 import '../widgets/shimmer_widgets.dart';
 
 class ServicePostScreen extends StatefulWidget {
@@ -18,6 +21,7 @@ class ServicePostScreen extends StatefulWidget {
   final bool showSubcategoryGridView;
   final ServicePostBloc servicePostBloc;
   final User user;
+  final ScrollController? scrollController; // Add scroll controller parameter
 
   const ServicePostScreen({
     super.key,
@@ -26,6 +30,7 @@ class ServicePostScreen extends StatefulWidget {
     required this.servicePostBloc,
     required this.showSubcategoryGridView,
     required this.user,
+    this.scrollController, // Optional scroll controller
   });
 
   @override
@@ -37,7 +42,7 @@ class ServicePostScreenState extends State<ServicePostScreen>
   @override
   bool get wantKeepAlive => true;
 
-  final ScrollController _scrollController = ScrollController();
+  late ScrollController _scrollController;
 
   // Pagination state
   int _currentPage = 1;
@@ -45,7 +50,7 @@ class ServicePostScreenState extends State<ServicePostScreen>
   bool _isLoadingMore = false;
 
   // Track post IDs to prevent duplicates
-  late  Set<int> _loadedPostIds = {};
+  late Set<int> _loadedPostIds = {};
 
   // Content state
   List<ServicePost> _posts = [];
@@ -60,6 +65,12 @@ class ServicePostScreenState extends State<ServicePostScreen>
   // Prevent duplicate requests
   bool _isRefreshing = false;
 
+  // Filter options
+  FilterOptions _filterOptions = FilterOptions();
+
+  // Language provider
+  final language = Language();
+
   // Post deletion callback
   late Function onPostDeleted = (int postId) {
     if (mounted) {
@@ -73,6 +84,10 @@ class ServicePostScreenState extends State<ServicePostScreen>
   @override
   void initState() {
     super.initState();
+
+    // Use the provided scroll controller or create a new one
+    _scrollController = widget.scrollController ?? ScrollController();
+
     _loadStopwatch.start();
     _scrollController.addListener(_onScroll);
     _loadInitialData();
@@ -81,6 +96,14 @@ class ServicePostScreenState extends State<ServicePostScreen>
   @override
   void didUpdateWidget(ServicePostScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Update scroll controller if it changed
+    if (widget.scrollController != null &&
+        widget.scrollController != _scrollController) {
+      _scrollController.removeListener(_onScroll);
+      _scrollController = widget.scrollController!;
+      _scrollController.addListener(_onScroll);
+    }
 
     // Reset state if category changes
     if (oldWidget.category != widget.category) {
@@ -115,12 +138,13 @@ class ServicePostScreenState extends State<ServicePostScreen>
       _hasReachedMax = false;
       _isLoadingMore = false;
       _isRefreshing = false;
-      _posts = [];  // Don't use clear() to avoid UI flash
+      _posts = []; // Don't use clear() to avoid UI flash
       _loadedPostIds.clear();
       _hasError = false;
       _errorMessage = '';
       _isFirstLoad = true;
       _initialLoadComplete = false;
+      _filterOptions = FilterOptions(); // Reset filter options
 
       _loadStopwatch.reset();
       _loadStopwatch.start();
@@ -132,11 +156,22 @@ class ServicePostScreenState extends State<ServicePostScreen>
         'Loading initial data for category ${widget.category}',
         category: 'SERVICE_POST_SCREEN');
 
+    _loadFilteredPosts();
+  }
+
+  void _loadFilteredPosts() {
+    // Get filter values
+    final typeFilter = _filterOptions.typeFilter;
+    final priceRange = _filterOptions.priceRangeFilter;
+
     widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
       widget.category,
-      1, // Always start with page 1 for initial load
+      _currentPage,
       forceRefresh: true,
-      showLoadingState: true,
+      showLoadingState: _isFirstLoad || _posts.isEmpty,
+      typeFilter: typeFilter,
+      minPrice: priceRange?.start,
+      maxPrice: priceRange?.end,
     ));
   }
 
@@ -145,12 +180,23 @@ class ServicePostScreenState extends State<ServicePostScreen>
         'Loading silently for category ${widget.category}',
         category: 'SERVICE_POST_SCREEN');
 
-    widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
-      widget.category,
-      1,
-      forceRefresh: true,
-      showLoadingState: false,
-    ));
+    _loadFilteredPosts();
+  }
+
+  void _applyFilters(FilterOptions filterOptions) {
+    if (mounted) {
+      setState(() {
+        _filterOptions = filterOptions;
+        _currentPage = 1;
+        _hasReachedMax = false;
+        _isLoadingMore = false;
+        _posts = [];
+        _loadedPostIds.clear();
+        _isFirstLoad = true;
+      });
+
+      _loadFilteredPosts();
+    }
   }
 
   void _onScroll() {
@@ -159,11 +205,12 @@ class ServicePostScreenState extends State<ServicePostScreen>
       return;
     }
 
-    // Preload when approaching the bottom (70% of the way there)
+    // Preload when closer to the bottom (90% of the way there)
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
 
-    if (currentScroll >= maxScroll * 0.7) {
+    // More aggressive loading trigger (90% instead of 70%)
+    if (currentScroll >= maxScroll * 0.9) {
       if (mounted) {
         setState(() {
           _isLoadingMore = true;
@@ -176,12 +223,7 @@ class ServicePostScreenState extends State<ServicePostScreen>
           'Loading more posts for category ${widget.category}, page $_currentPage',
           category: 'SERVICE_POST_SCREEN');
 
-      widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
-        widget.category,
-        _currentPage,
-        forceRefresh: true,
-        showLoadingState: false,
-      ));
+      _loadFilteredPosts();
     }
   }
 
@@ -198,15 +240,11 @@ class ServicePostScreenState extends State<ServicePostScreen>
     // Reset pagination
     _currentPage = 1;
     _hasReachedMax = false;
+    _posts = [];
+    _loadedPostIds.clear();
 
-    // Trigger data load without clearing existing posts yet
-    // This prevents the screen from flickering during refresh
-    widget.servicePostBloc.add(GetServicePostsByCategoryEvent(
-      widget.category,
-      _currentPage,
-      forceRefresh: true,
-      showLoadingState: false,
-    ));
+    // Trigger data load
+    _loadFilteredPosts();
 
     // Complete the refresh after a reasonable delay
     return Future.delayed(const Duration(milliseconds: 800), () {
@@ -284,13 +322,17 @@ class ServicePostScreenState extends State<ServicePostScreen>
       }
     }
 
+    // Only check if we've reached max if we got zero new posts
+    // or if the explicit hasReachedMax flag is true
+    final bool reachedMax = hasReachedMax || newPosts.isEmpty;
+
     if (newPosts.isNotEmpty) {
       if (mounted) {
         setState(() {
           // Add only the new posts
           _posts.addAll(newPosts);
           _loadedPostIds.addAll(newPostIds);
-          _hasReachedMax = hasReachedMax || newPosts.length < servicePosts.length;
+          _hasReachedMax = reachedMax;
           _isLoadingMore = false;
           _isRefreshing = false;
         });
@@ -326,9 +368,103 @@ class ServicePostScreenState extends State<ServicePostScreen>
   @override
   void dispose() {
     _loadStopwatch.stop();
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+
+    // Only dispose the controller if we created it
+    if (widget.scrollController == null) {
+      _scrollController.removeListener(_onScroll);
+      _scrollController.dispose();
+    } else {
+      _scrollController.removeListener(_onScroll);
+    }
+
     super.dispose();
+  }
+
+  Widget _buildEmptyState() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final isArabic = language.getLanguage() == 'ar';
+
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(32),
+        margin: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? Color(0xFF2A2A2A) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.primary.withOpacity(0.1),
+              ),
+              child: Icon(
+                _filterOptions.hasActiveFilters ? Icons.filter_alt_off : Icons.article_outlined,
+                size: 48,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              _filterOptions.hasActiveFilters ?
+              (isArabic ? 'لا توجد منشورات تطابق الفلترة' : 'No posts match the filter criteria') :
+              (isArabic ? 'لا توجد منشورات' : 'No posts available'),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            _filterOptions.hasActiveFilters ?
+            Text(
+              isArabic ? 'حاول إعادة ضبط المرشحات أو تغييرها' : 'Try resetting or changing the filters',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                height: 1.5,
+                color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7),
+              ),
+            ) :
+            Text(
+              isArabic ? 'لا توجد منشورات متاحة في هذه الفئة' : 'No posts available in this category',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                height: 1.5,
+                color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 32),
+            if (_filterOptions.hasActiveFilters)
+              OutlinedButton.icon(
+                onPressed: () => _applyFilters(FilterOptions()),
+                icon: const Icon(Icons.filter_alt_off),
+                label: Text(isArabic ? 'إعادة ضبط الفلترة' : 'Reset Filters'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              )
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -384,24 +520,68 @@ class ServicePostScreenState extends State<ServicePostScreen>
     } else if (_hasError) {
       return _buildErrorState();
     } else {
-      return const ServicePostScreenShimmer();
+      return _buildEmptyState();
     }
   }
 
   Widget _buildPostsList() {
     return RefreshIndicator(
       onRefresh: _handleRefresh,
-      child: ListView.builder(
+      child: CustomScrollView(
         controller: _scrollController,
-        itemCount: _hasReachedMax ? _posts.length : _posts.length + 1,
         physics: const AlwaysScrollableScrollPhysics(),
-        itemBuilder: (context, index) {
-          // Loading indicator at the end
-          if (index >= _posts.length) {
-            return Visibility(
+        slivers: [
+          // Filter bar
+          SliverToBoxAdapter(
+            child: ServicePostFilterBar(
+              posts: _posts,
+              filterOptions: _filterOptions,
+              onFilterChanged: _applyFilters,
+              initiallyExpanded: false,
+            ),
+          ),
+
+          // Posts list with animations
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                if (index >= _posts.length) {
+                  return const SizedBox.shrink();
+                }
+
+                final post = _posts[index];
+
+                // Determine if this is a newly loaded post for animation purposes
+                final bool isNewlyLoaded = _isLoadingMore &&
+                    index >= (_posts.length - 10) &&
+                    _currentPage > 1;
+
+                return AnimationConfiguration.staggeredList(
+                  // Apply longer duration only for newly loaded items
+                  duration: isNewlyLoaded
+                      ? const Duration(milliseconds: 375)
+                      : const Duration(milliseconds: 0),
+                  position: index,
+                  child: SlideAnimation(
+                    verticalOffset: isNewlyLoaded ? 50.0 : 0.0,
+                    child: FadeInAnimation(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: _buildPostCard(post),
+                      ),
+                    ),
+                  ),
+                );
+              },
+              childCount: _posts.length,
+            ),
+          ),
+
+          // Loading indicator at the bottom for pagination
+          SliverToBoxAdapter(
+            child: Visibility(
               visible: _isLoadingMore,
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
                 alignment: Alignment.center,
                 child: SizedBox(
                   width: 30,
@@ -412,27 +592,28 @@ class ServicePostScreenState extends State<ServicePostScreen>
                   ),
                 ),
               ),
-            );
-          }
+            ),
+          ),
 
-          final post = _posts[index];
-
-          // Only animate new items at the end (not the entire list)
-          final isNewlyLoadedItem = _isLoadingMore &&
-              index >= (_posts.length - 10) &&
-              _currentPage > 1;
-
-          if (isNewlyLoadedItem) {
-            final delay = index % 5 * 20;
-            return FadeTransition(
-              opacity: AlwaysStoppedAnimation(1.0), // No fade animation - prevents blinking
-              child: _buildPostCard(post),
-            );
-          }
-
-          // Regular posts without animation
-          return _buildPostCard(post);
-        },
+          // End of list indicator
+          SliverToBoxAdapter(
+            child: Visibility(
+              visible: _hasReachedMax && _posts.isNotEmpty,
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Center(
+                  child: Text(
+                    language.getLanguage() == 'ar' ? 'لقد وصلت إلى النهاية' : 'You\'ve reached the end',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -466,7 +647,11 @@ class ServicePostScreenState extends State<ServicePostScreen>
                 const SizedBox(height: 16),
                 Text(
                   _errorMessage.contains('SocketException')
-                      ? 'No internet connection. Pull down to refresh.'
+                      ? language.getLanguage() == 'ar'
+                      ? 'لا يوجد اتصال بالإنترنت. اسحب لأسفل للتحديث.'
+                      : 'No internet connection. Pull down to refresh.'
+                      : language.getLanguage() == 'ar'
+                      ? 'تعذر تحميل المنشورات. اسحب لأسفل للتحديث.'
                       : 'Could not load posts. Pull down to refresh.',
                   textAlign: TextAlign.center,
                   style: TextStyle(

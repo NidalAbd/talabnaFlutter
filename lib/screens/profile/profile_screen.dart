@@ -18,31 +18,6 @@ import '../interaction_widget/report_tile.dart';
 import '../service_post/other_post_screen.dart';
 import 'add_point_screen.dart';
 
-// Add this safeguard function to safely show SnackBars
-void safeShowSnackBar(BuildContext context, String message) {
-  if (context == null || !Navigator.canPop(context)) {
-    print('Warning: Invalid context for SnackBar');
-    return;
-  }
-
-  try {
-    // Clear any existing SnackBars first
-    ScaffoldMessenger.of(context).clearSnackBars();
-
-    // Build the SnackBar first to avoid null issues during build
-    final snackBar = SnackBar(
-      content: Text(message),
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
-    );
-
-    // Show the SnackBar
-    ScaffoldMessenger.of(context).showSnackBar(snackBar);
-  } catch (e) {
-    print('Error showing SnackBar: $e');
-  }
-}
-
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
@@ -64,8 +39,11 @@ class _ProfileScreenState extends State<ProfileScreen>
   late final TabController _tabController;
   late OtherUserProfileBloc _userProfileBloc;
   final Language _language = Language();
-  final ScrollController _scrollController = ScrollController();
-  bool _isTitleVisible = false;
+
+  // Simple animation parameters
+  bool _isCollapsed = false;
+  final double _headerHeight = 300.0;
+  final double _collapsedHeight = 120.0; // Height for collapsed state with app bar and tab bar
 
   @override
   void initState() {
@@ -79,29 +57,32 @@ class _ProfileScreenState extends State<ProfileScreen>
         _userProfileBloc.add(OtherUserProfileRequested(id: widget.toUser));
       }
     });
-
-    _scrollController.addListener(_onScroll);
   }
 
-  void _onScroll() {
-    if (_scrollController.offset > 200 && !_isTitleVisible) {
+  // Simplified scroll processor
+  void _processScroll(ScrollUpdateNotification notification) {
+    final scrollPosition = notification.metrics.pixels;
+    final isScrollingDown = notification.scrollDelta != null && notification.scrollDelta! > 0;
+    final isScrollingUp = notification.scrollDelta != null && notification.scrollDelta! < 0;
+
+    // Collapse header when scrolling down past threshold
+    if (isScrollingDown && scrollPosition > 50 && !_isCollapsed) {
       setState(() {
-        _isTitleVisible = true;
+        _isCollapsed = true;
       });
-    } else if (_scrollController.offset <= 200 && _isTitleVisible) {
+    }
+
+    // Expand header when scrolling back to top
+    else if (isScrollingUp && scrollPosition < 10 && _isCollapsed) {
       setState(() {
-        _isTitleVisible = false;
+        _isCollapsed = false;
       });
     }
   }
 
-  // Modified safe clipboard function
   void _setClipboardData(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
-
-    // Use a simple tooltip or dialog instead of SnackBar
     if (mounted) {
-      // Use a dialog which is less likely to cause null issues
       showDialog(
         context: context,
         barrierDismissible: true,
@@ -120,15 +101,12 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
     _tabController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Make sure we have a Scaffold as the direct parent of the BlocBuilder
     return Scaffold(
       body: BlocBuilder<OtherUserProfileBloc, OtherUserProfileState>(
         builder: (BuildContext context, OtherUserProfileState state) {
@@ -136,62 +114,40 @@ class _ProfileScreenState extends State<ProfileScreen>
             return const Center(child: CircularProgressIndicator());
           } else if (state is OtherUserProfileLoadSuccess) {
             final user = state.user;
-            return NestedScrollView(
-              controller: _scrollController,
-              headerSliverBuilder:
-                  (BuildContext context, bool innerBoxIsScrolled) {
-                return [
-                  SliverAppBar(
-                    expandedHeight: 300.0,
-                    pinned: true,
-                    title: _isTitleVisible
-                        ? Text(user.userName ?? 'Profile')
-                        : null,
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.more_vert),
-                        onPressed: () => _showMoreOptions(context, user),
-                      ),
-                    ],
-                    flexibleSpace: FlexibleSpaceBar(
-                      background: _buildProfileHeader(user),
-                    ),
-                    bottom: TabBar(
+            return NotificationListener<ScrollUpdateNotification>(
+              onNotification: (notification) {
+                _processScroll(notification);
+                return false;
+              },
+              child: Column(
+                children: [
+                  // Header section
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                    height: _isCollapsed ? _collapsedHeight : _headerHeight,
+                    width: double.infinity,
+                    child: _isCollapsed
+                        ? _buildCollapsedHeader(user)
+                        : _buildExpandedHeader(user),
+                  ),
+
+                  // Tab content
+                  Expanded(
+                    child: TabBarView(
                       controller: _tabController,
-                      labelColor: Colors.white,
-                      unselectedLabelColor: Colors.white70,
-                      indicatorColor: Colors.white,
-                      indicatorWeight: 3,
-                      labelStyle: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                      unselectedLabelStyle: const TextStyle(
-                        fontWeight: FontWeight.normal,
-                        fontSize: 14,
-                      ),
-                      tabs: [
-                        Tab(text: _language.tPostsText()),
-                        Tab(text: _language.tFollowersText()),
-                        Tab(text: _language.tFollowingText()),
-                        Tab(text: _language.tOverviewText()),
+                      children: [
+                        UserPostScreen(userID: user.id, user: user),
+                        UserFollowerScreen(userID: user.id, user: widget.user),
+                        UserFollowingScreen(userID: user.id, user: widget.user),
+                        UserInfoWidget(userId: user.id, user: user),
                       ],
                     ),
                   ),
-                ];
-              },
-              body: TabBarView(
-                controller: _tabController,
-                children: [
-                  UserPostScreen(userID: user.id, user: user),
-                  UserFollowerScreen(userID: user.id, user: widget.user),
-                  UserFollowingScreen(userID: user.id, user: widget.user),
-                  UserInfoWidget(userId: user.id, user: user),
                 ],
               ),
             );
           } else if (state is OtherUserProfileLoadFailure) {
-            // Use a simple error widget instead of potentially problematic one
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -217,7 +173,6 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             );
           } else {
-            // Use a simple placeholder widget
             return Center(
               child: Text('No user profile data found.'),
             );
@@ -227,7 +182,223 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildProfileHeader(User user) {
+  // Collapsed header with app bar and tab bar
+  Widget _buildCollapsedHeader(User user) {
+    return Material(
+      color: Theme.of(context).primaryColor,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Status bar space
+          SizedBox(height: MediaQuery.of(context).padding.top),
+
+          SizedBox(
+            height: 40, // Standard app bar height
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                children: [
+                  // Back button
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                    iconSize: 24,
+                  ),
+
+                  // Profile photo
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      image: DecorationImage(
+                        image: CachedNetworkImageProvider(
+                          ProfileImageHelper.getProfileImageUrl(user.photos?.first),
+                        ),
+                        fit: BoxFit.cover,
+                      ),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Username
+                  Expanded(
+                    child: Text(
+                      user.userName ?? 'Profile',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+
+                  // More options button
+                  IconButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    onPressed: () => _showMoreOptions(context, user),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Spacer
+          const Spacer(),
+
+          // Tab bar
+          TabBar(
+            controller: _tabController,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelStyle: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontWeight: FontWeight.normal,
+              fontSize: 14,
+            ),
+            tabs: [
+              Tab(text: _language.tPostsText()),
+              Tab(text: _language.tFollowersText()),
+              Tab(text: _language.tFollowingText()),
+              Tab(text: _language.tOverviewText()),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Expanded header with profile details
+  Widget _buildExpandedHeader(User user) {
+    return Stack(
+      children: [
+        // Background image
+        Positioned.fill(
+          child: _buildProfileBackground(user),
+        ),
+
+        // Status bar space + app bar
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+            height: 56.0 + MediaQuery.of(context).padding.top,
+            child: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  onPressed: () => _showMoreOptions(context, user),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Profile content
+        Positioned(
+          top: 70,  // Positioned below app bar
+          left: 0,
+          right: 0,
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Prevent overflow
+            children: [
+              // Profile Image
+              Hero(
+                tag: 'profile_image_${user.id}',
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundImage: CachedNetworkImageProvider(
+                    ProfileImageHelper.getProfileImageUrl(user.photos?.first),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Username
+              Text(
+                user.userName ?? 'User Name',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Stats row positioned just above the tab bar
+        Positioned(
+          bottom: 48, // Position above tab bar
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildStatColumn('Posts', user.servicePostsCount ?? 0),
+                const SizedBox(width: 32),
+                _buildStatColumn('Followers', user.followersCount ?? 0),
+                const SizedBox(width: 32),
+                _buildStatColumn('Following', user.followingCount ?? 0),
+              ],
+            ),
+          ),
+        ),
+
+        // Tab bar at bottom
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            color: Colors.black26,
+            child: TabBar(
+              controller: _tabController,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              indicatorColor: Colors.white,
+              indicatorWeight: 3,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.normal,
+                fontSize: 14,
+              ),
+              tabs: [
+                Tab(text: _language.tPostsText()),
+                Tab(text: _language.tFollowersText()),
+                Tab(text: _language.tFollowingText()),
+                Tab(text: _language.tOverviewText()),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileBackground(User user) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -242,61 +413,19 @@ class _ProfileScreenState extends State<ProfileScreen>
               colorBlendMode: BlendMode.darken,
             ),
           ),
-
-        // Profile content
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Profile Picture
-            Hero(
-              tag: 'profile_image_${user.id}',
-              child: CircleAvatar(
-                radius: 60,
-                backgroundImage: CachedNetworkImageProvider(
-                  ProfileImageHelper.getProfileImageUrl(user.photos?.first),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Username
-            Text(
-              user.userName ?? 'User Name',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            // Stats
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildStatColumn('Posts', user.servicePostsCount ?? 0),
-                  const SizedBox(width: 32),
-                  _buildStatColumn('Followers', user.followersCount ?? 0),
-                  const SizedBox(width: 32),
-                  _buildStatColumn('Following', user.followingCount ?? 0),
-                ],
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
 
-  Column _buildStatColumn(String label, int count) {
+  Widget _buildStatColumn(String label, int count) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           count.toString(),
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 20,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -304,7 +433,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           label,
           style: const TextStyle(
             color: Colors.white70,
-            fontSize: 14,
+            fontSize: 12,
           ),
         ),
       ],

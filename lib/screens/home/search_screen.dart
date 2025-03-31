@@ -57,7 +57,7 @@ class _SearchScreenState extends State<SearchScreen>
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       final bool shouldLoadMore =
-          _tabController.index == 0 ? !_userHasReachedMax : !_postHasReachedMax;
+      _tabController.index == 0 ? !_userHasReachedMax : !_postHasReachedMax;
 
       if (shouldLoadMore) {
         _currentPage++;
@@ -68,7 +68,17 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   void _handleSearch(String query) {
-    if (query.isEmpty) return;
+    // Only search if query has 3 or more characters
+    if (query.isEmpty || query.length < 3) {
+      if (_isSearching) {
+        setState(() {
+          _isSearching = false;
+          users.clear();
+          servicePosts.clear();
+        });
+      }
+      return;
+    }
 
     setState(() {
       _searchQuery = query;
@@ -86,185 +96,63 @@ class _SearchScreenState extends State<SearchScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70),
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.primaryColor,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: theme.iconTheme.color,
           ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: _buildSearchField(theme),
-            ),
-          ),
+          onPressed: () => Navigator.of(context).pop(),
         ),
+        title: Text(
+          'Search',
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
       ),
-      body: BlocConsumer<UserActionBloc, UserActionState>(
-        listener: (context, state) {
-          if (state is UserSearchActionResult) {
-            setState(() {
-              if (_currentPage == 1) {
-                users = List.from(state.users);
-                servicePosts = List.from(state.servicePosts);
-              } else {
-                users.addAll(state.users);
-                servicePosts.addAll(state.servicePosts);
-              }
-              _userHasReachedMax = state.usersHasReachedMax;
-              _postHasReachedMax = state.servicePostsHasReachedMax;
-            });
-          } else if (state is UserActionFailure) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(state.error),
-              behavior: SnackBarBehavior.floating,
-            ));
-          }
-        },
-        builder: (context, state) {
-          if (state is UserActionInProgress && _currentPage == 1) {
-            return Center(
-              child: CircularProgressIndicator(
-                color: theme.primaryColor,
-              ),
-            );
-          }
-
-          if (!_isSearching) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.search,
-                    size: 64,
-                    color: theme.primaryColor.withOpacity(0.5),
+      body: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            height: 56,
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                if (!isDarkMode)
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Search for users or posts',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: theme.primaryColor,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (users.isEmpty && servicePosts.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.search_off,
-                    size: 64,
-                    color: theme.primaryColor.withOpacity(0.5),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No results found',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: theme.primaryColor,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return Column(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: theme.cardColor,
-                  border: Border(
-                    bottom: BorderSide(
-                      color: theme.dividerColor,
-                      width: 1,
-                    ),
-                  ),
+              ],
+            ),
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              textInputAction: TextInputAction.search,
+              style: theme.textTheme.bodyLarge,
+              decoration: InputDecoration(
+                hintText: 'Search users, posts, and more...',
+                hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                  color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade500,
                 ),
-                child: TabBar(
-                  controller: _tabController,
-                  labelColor: theme.primaryColor,
-                  unselectedLabelColor: theme.hintColor,
-                  indicatorColor: theme.primaryColor,
-                  indicatorWeight: 3,
-                  labelStyle: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                  unselectedLabelStyle: theme.textTheme.titleMedium,
-                  tabs: [
-                    Tab(
-                      text: 'Users (${users.length})',
-                    ),
-                    Tab(
-                      text: 'Posts (${servicePosts.length})',
-                    ),
-                  ],
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: theme.primaryColor,
+                  size: 26,
                 ),
-              ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildUsersList(theme),
-                    _buildPostsList(theme),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSearchField(ThemeData theme) {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        textInputAction: TextInputAction.search,
-        style: theme.textTheme.bodyLarge,
-        decoration: InputDecoration(
-          hintText: 'Search users and posts...',
-          hintStyle: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.hintColor,
-          ),
-          prefixIcon: Icon(
-            Icons.search,
-            color: theme.hintColor,
-          ),
-          suffixIcon: _isSearching
-              ? IconButton(
+                suffixIcon: _isSearching
+                    ? IconButton(
                   icon: Icon(
-                    Icons.clear,
-                    color: theme.hintColor,
+                    Icons.clear_rounded,
+                    color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade700,
                   ),
                   onPressed: () {
                     _searchController.clear();
@@ -275,16 +163,186 @@ class _SearchScreenState extends State<SearchScreen>
                     });
                   },
                 )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-        ),
-        onSubmitted: _handleSearch,
-        onChanged: (value) {
-          if (value.isNotEmpty) {
-            _handleSearch(value);
-          }
-        },
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              ),
+              onSubmitted: _handleSearch,
+              onChanged: (value) {
+                // Will handle empty checks inside _handleSearch method
+                _handleSearch(value);
+              },
+            ),
+          ),
+          Expanded(
+            child: BlocConsumer<UserActionBloc, UserActionState>(
+              listener: (context, state) {
+                if (state is UserSearchActionResult) {
+                  setState(() {
+                    if (_currentPage == 1) {
+                      users = List.from(state.users);
+                      servicePosts = List.from(state.servicePosts);
+                    } else {
+                      users.addAll(state.users);
+                      servicePosts.addAll(state.servicePosts);
+                    }
+                    _userHasReachedMax = state.usersHasReachedMax;
+                    _postHasReachedMax = state.servicePostsHasReachedMax;
+                  });
+                } else if (state is UserActionFailure) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(state.error),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: theme.colorScheme.error,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    margin: const EdgeInsets.all(10),
+                  ));
+                }
+              },
+              builder: (context, state) {
+                if (state is UserActionInProgress && _currentPage == 1) {
+                  return Center(
+                    child: CircularProgressIndicator(
+                      color: theme.primaryColor,
+                    ),
+                  );
+                }
+
+                if (!_isSearching) {
+                  return _buildEmptySearchState(
+                      theme,
+                      Icons.search_rounded,
+                      'Search for users or posts'
+                  );
+                }
+
+                if (users.isEmpty && servicePosts.isEmpty) {
+                  return _buildEmptySearchState(
+                      theme,
+                      Icons.search_off_rounded,
+                      'No results found'
+                  );
+                }
+
+                return Column(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: theme.scaffoldBackgroundColor,
+                        boxShadow: [
+                          BoxShadow(
+                            color: isDarkMode
+                                ? Colors.black.withOpacity(0.2)
+                                : Colors.grey.withOpacity(0.1),
+                            offset: const Offset(0, 2),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                      child: TabBar(
+                        controller: _tabController,
+                        labelColor: isDarkMode
+                            ? Colors.white
+                            : theme.primaryColor,
+                        unselectedLabelColor: isDarkMode
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade600,
+                        indicatorColor: theme.primaryColor,
+                        indicatorWeight: 3,
+                        indicatorSize: TabBarIndicatorSize.label,
+                        labelStyle: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        unselectedLabelStyle: theme.textTheme.titleMedium,
+                        tabs: [
+                          Tab(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.people_alt_rounded, size: 20),
+                                  const SizedBox(width: 6),
+                                  Text('Users (${users.length})'),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Tab(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.description_rounded, size: 20),
+                                  const SizedBox(width: 6),
+                                  Text('Posts (${servicePosts.length})'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildUsersList(theme),
+                          _buildPostsList(theme),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptySearchState(ThemeData theme, IconData icon, String message) {
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 72,
+              color: theme.primaryColor,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            message,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _isSearching
+                ? 'Try different keywords or refine your search'
+                : 'Type in the search field to find users and posts',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -292,7 +350,6 @@ class _SearchScreenState extends State<SearchScreen>
   Widget _buildUsersList(ThemeData theme) {
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: users.length + (_userHasReachedMax ? 0 : 1),
       itemBuilder: (context, index) {
         if (index == users.length) {
@@ -319,7 +376,6 @@ class _SearchScreenState extends State<SearchScreen>
   Widget _buildPostsList(ThemeData theme) {
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: servicePosts.length + (_postHasReachedMax ? 0 : 1),
       itemBuilder: (context, index) {
         if (index == servicePosts.length) {

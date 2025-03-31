@@ -12,6 +12,7 @@ import 'package:talabna/blocs/user_contact/user_contact_event.dart';
 import 'package:talabna/data/models/service_post.dart';
 import 'package:talabna/data/models/user.dart';
 import 'package:talabna/screens/interaction_widget/location_button.dart';
+import 'package:talabna/screens/interaction_widget/report_tile.dart';
 import 'package:talabna/screens/profile/user_contact_buttons.dart';
 import 'package:talabna/screens/widgets/image_grid.dart';
 import 'package:talabna/screens/widgets/service_post_action.dart';
@@ -19,6 +20,8 @@ import 'package:talabna/screens/widgets/user_avatar.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../blocs/comments/comment_bloc.dart';
+import '../../blocs/font_size/font_size_bloc.dart';
+import '../../blocs/font_size/font_size_state.dart';
 import '../../blocs/user_profile/user_profile_bloc.dart';
 import '../../blocs/user_profile/user_profile_event.dart';
 import '../../provider/language.dart';
@@ -27,6 +30,7 @@ import '../../utils/photo_image_helper.dart';
 import '../../utils/premium_badge.dart';
 import '../../utils/share_utils.dart';
 import '../reel/like_button.dart';
+import '../reel/reels_screen.dart';
 import '../widgets/comment_sheet.dart';
 import 'auto_direction_text.dart';
 
@@ -40,6 +44,8 @@ class ServicePostCardView extends StatefulWidget {
     required this.user,
     this.showTextOnRight = false,
     this.interactionIconSize = 24.0,
+    this.isFromDeepLink = false,
+    this.noAppBar = false,  // Add this parameter
   });
 
   final Function onPostDeleted;
@@ -49,6 +55,8 @@ class ServicePostCardView extends StatefulWidget {
   final User user;
   final bool showTextOnRight;
   final double interactionIconSize;
+  final bool isFromDeepLink;
+  final bool noAppBar;  // New parameter
 
   @override
   State<ServicePostCardView> createState() => _ServicePostCardViewState();
@@ -121,6 +129,36 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    // If noAppBar is true, just return the content without a Scaffold
+    if (widget.noAppBar) {
+      return SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPostHeader(colorScheme),
+            _buildPostContent(colorScheme),
+            Divider(
+              color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+              thickness: 0.5,
+              height: 1,
+            ),
+            _buildInteractionRow(colorScheme),
+            Divider(
+              color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+              thickness: 0.5,
+              height: 1,
+            ),
+            _buildContactSection(colorScheme),
+            if (widget.servicePost.categoriesId != 7 &&
+                widget.servicePost.locationLatitudes != null &&
+                widget.servicePost.locationLongitudes != null)
+              _buildLocationSection(colorScheme),
+          ],
+        ),
+      );
+    }
+
+    // Otherwise return with the Scaffold as before
     return Scaffold(
       backgroundColor: isDarkMode ? Colors.black : Colors.grey[50],
       appBar: _buildAppBar(colorScheme),
@@ -179,7 +217,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
               padding: const EdgeInsets.only(left: 8.0),
               child: PremiumBadge(
                 badgeType: widget.servicePost.haveBadge ?? 'عادي',
-                size: 18,
+                size: 22,
                 userID: widget.userProfileId,
               ),
             ),
@@ -221,7 +259,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Hero(
-            tag: 'avatar_${widget.servicePost.userId}',
+            tag: 'detail_avatar_${widget.servicePost.userId}_${widget.servicePost.id}',
             child: UserAvatar(
               imageUrl: ProfileImageHelper.getProfileImageUrl(
                 widget.servicePost.userPhoto,
@@ -309,7 +347,10 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
   Widget _buildPostContent(ColorScheme colorScheme) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final accent = Theme.of(context).primaryColor;
-
+    final fontSizeState = context.watch<FontSizeBloc>().state;
+    final descriptionFontSize = fontSizeState is FontSizeLoaded
+        ? fontSizeState.descriptionFontSize
+        : 14.0; // fallback
     // Detect if description is primarily Arabic
     final isDescriptionArabic = widget.servicePost.description != null &&
         widget.servicePost.description!.isNotEmpty &&
@@ -331,18 +372,17 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
               widget.servicePost.description!.isNotEmpty)
             Directionality(
               textDirection:
-                  isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+              isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                 child: Text(
                   widget.servicePost.description ?? '',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: descriptionFontSize, // Dynamic font size
                     color: colorScheme.onSurface,
                     height: 1.3,
                   ),
-                  textAlign:
-                      isDescriptionArabic ? TextAlign.right : TextAlign.left,
+                  textAlign: isDescriptionArabic ? TextAlign.right : TextAlign.left,
                 ),
               ),
             ),
@@ -353,14 +393,32 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
           if (widget.servicePost.photos != null &&
               widget.servicePost.photos!.isNotEmpty)
             Hero(
-              tag: 'photo_${widget.servicePost.id}',
+              tag: 'detail_photo_${widget.servicePost.id}',
               child: ImageGrid(
                 imageUrls: widget.servicePost.photos!
                     .map((photo) => '${photo.src}')
-                    .toList(),
+                    .toList() ?? [],
+                uniqueId: 'post_${widget.servicePost.id}',
+                maxHeight: 320, // Adjusted height for better proportion
+                onVideoReelsTap: _openVideoInReels,
               ),
             ),
         ],
+      ),
+    );
+  }
+  void _openVideoInReels(String videoUrl) {
+    // Extract post ID from the current post
+    final postId = widget.servicePost.id.toString();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ReelsHomeScreen(
+          userId: widget.userProfileId,
+          user: widget.user,
+          postId: postId,
+          servicePost: widget.servicePost,
+        ),
       ),
     );
   }
@@ -437,7 +495,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
     if (widget.servicePost.price != null) {
       tags.add(_buildTag(
         label:
-            "${widget.servicePost.price} ${widget.servicePost.priceCurrencyCode}",
+        "${widget.servicePost.price} ${widget.servicePost.priceCurrencyCode}",
         decoration: tagDecoration,
         style: tagTextStyle,
       ));
@@ -449,7 +507,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
         scrollDirection: Axis.horizontal,
         child: Row(
           textDirection:
-              isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
+          isDescriptionArabic ? TextDirection.rtl : TextDirection.ltr,
           children: [
             for (int i = 0; i < tags.length; i++) ...[
               tags[i],
@@ -495,11 +553,12 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
           _buildCountButton(
             icon: Icons.remove_red_eye_outlined,
             count: formatNumber(widget.servicePost.viewCount ?? 0),
-            color: textColor,
             onTap: () {}, // Views are typically not interactive
           ),
 
           CommentModalBottomSheet(
+            showCountOnRight: true,
+            showCount: true,
             iconSize: 22,
             userProfileBloc: _userCurrentProfileBloc,
             commentBloc: _commentBloc,
@@ -509,6 +568,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
 
           // LIKES with count
           LikeButton(
+            unlikedColor: textColor,
             showCountOnRight: true,
             isFavorite: widget.servicePost.isFavorited ?? false,
             favoritesCount: widget.servicePost.favoritesCount ?? 0,
@@ -534,7 +594,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
                   servicePostId: widget.servicePost.id!));
 
               return completer.future;
-            },
+            }, iconSize: 22,
           ),
 
           // SHARE (icon only)
@@ -544,14 +604,6 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
             onTap: _shareServicePost,
           ),
 
-          // REPORT (icon only)
-          _buildIconButton(
-            icon: Icons.flag_outlined,
-            color: textColor,
-            onTap: () {
-              // Report functionality
-            },
-          ),
         ],
       ),
     );
@@ -560,7 +612,6 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
   Widget _buildCountButton({
     required IconData icon,
     required String count,
-    required Color? color,
     required VoidCallback onTap,
   }) {
     return Material(
@@ -575,15 +626,13 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
               Icon(
                 icon,
                 size: 20,
-                color: color,
               ),
               const SizedBox(width: 4),
               Text(
                 count,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 16,
                   fontWeight: FontWeight.w500,
-                  color: color,
                 ),
               ),
             ],
@@ -607,7 +656,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           child: Icon(
             icon,
-            size: 20,
+            size: 25,
             color: color,
           ),
         ),
@@ -658,7 +707,6 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      color: isDarkMode ? Colors.grey.shade900 : Colors.white,
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,7 +718,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
                 Icon(
                   Icons.location_on,
                   size: 16,
-                  color: colorScheme.primary,
+                  color: isDarkMode ? Colors.grey.shade900 : Colors.white,
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -713,7 +761,7 @@ class _ServicePostCardViewState extends State<ServicePostCardView> {
                     position: LatLng(widget.servicePost.locationLatitudes!,
                         widget.servicePost.locationLongitudes!),
                     infoWindow:
-                        InfoWindow(title: language.getUserLocationText()),
+                    InfoWindow(title: language.getUserLocationText()),
                   ),
                 },
               ),

@@ -25,6 +25,8 @@ class LocationButtonWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -44,7 +46,10 @@ class LocationButtonWidget extends StatelessWidget {
             children: [
               SizedBox(width: width),
               // Add a fixed width SizedBox before the icon
-              const Icon(Icons.location_on_outlined, size: 25),
+              Icon(Icons.location_on_outlined, size: 25
+              ,    color: isDarkMode ? Colors.grey.shade900 : Colors.white,
+
+              ),
               SizedBox(width: width),
               // Add some space between the icon and text
               Text(

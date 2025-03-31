@@ -7,8 +7,49 @@ class PhoneButtonWidget extends StatelessWidget {
 
   const PhoneButtonWidget({super.key, this.phone, required this.width});
 
+  void _launchPhoneApp(BuildContext context) async {
+    if (phone == null || phone!.isEmpty) {
+      // Show a snackbar if phone is empty
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No phone number available'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final Uri phoneLaunchUri = Uri(
+      scheme: 'tel',
+      path: phone,
+    );
+
+    try {
+      if (await canLaunchUrl(phoneLaunchUri)) {
+        await launchUrl(phoneLaunchUri);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch phone app'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final displayText = (phone != null && phone!.isNotEmpty) ? phone! : 'No phone number';
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -16,39 +57,27 @@ class PhoneButtonWidget extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(
-              Radius.circular(16), // Adjust the radius as per your requirement
+              Radius.circular(16),
             ),
           ),
         ),
-        onPressed: () async {
-          if (phone != null) {
-            final Uri phoneLaunchUri = Uri(
-              scheme: 'tel',
-              path: phone!,
-            );
-            if (await canLaunchUrl(phoneLaunchUri)) {
-              await launchUrl(phoneLaunchUri);
-            } else {
-              throw 'Could not launch phone app.';
-            }
-          }
-        },
+        onPressed: () => _launchPhoneApp(context),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, 0),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               SizedBox(width: width),
-              // Add a fixed width SizedBox before the icon
-              Icon(Icons.phone),
+              Icon(Icons.phone, color: isDarkMode ? Colors.grey.shade900 : Colors.white),
               SizedBox(width: width),
-              // Add some space between the icon and text
-              Text(
-                phone!,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  displayText,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

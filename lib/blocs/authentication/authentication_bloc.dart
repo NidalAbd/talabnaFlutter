@@ -29,7 +29,7 @@ class AuthenticationBloc
         final token = result['token'];
         final authType = result['authType'] ?? 'email';
         final dataSaverEnabled =
-            await _authenticationRepository.getDataSaverStatus();
+        await _authenticationRepository.getDataSaverStatus();
 
         emit(AuthenticationSuccess(
           userId: userId,
@@ -99,7 +99,7 @@ class AuthenticationBloc
         final authType = result['authType'] ?? 'google';
         final isNewUser = result['isNewUser'] ?? false;
         final dataSaverEnabled =
-            await _authenticationRepository.getDataSaverStatus();
+        await _authenticationRepository.getDataSaverStatus();
 
         emit(AuthenticationSuccess(
           userId: userId,
@@ -155,12 +155,12 @@ class AuthenticationBloc
         final authType =
             await _authenticationRepository.getAuthType() ?? 'email';
         final dataSaverEnabled =
-            await _authenticationRepository.getDataSaverStatus();
+        await _authenticationRepository.getDataSaverStatus();
 
         if (token != null && userId != null) {
           // Verify token validity with the server
           final bool isValid =
-              await _authenticationRepository.checkTokenValidity(token);
+          await _authenticationRepository.checkTokenValidity(token);
 
           if (isValid) {
             emit(AuthenticationSuccess(
@@ -269,7 +269,7 @@ class AuthenticationBloc
         final currentState = state as AuthenticationSuccess;
         try {
           final newDataSaverStatus =
-              await _authenticationRepository.toggleDataSaver();
+          await _authenticationRepository.toggleDataSaver();
 
           emit(currentState.copyWith(
             dataSaverEnabled: newDataSaverStatus,

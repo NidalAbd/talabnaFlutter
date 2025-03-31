@@ -14,6 +14,8 @@ class FeedVideoPlayerWrapper extends StatefulWidget {
   final bool showControls;
   final bool isReelsMode;
   final VoidCallback? onReelsTap;
+  final bool disablePlayPause;
+  final bool isolateButtonTaps;
 
   const FeedVideoPlayerWrapper({
     Key? key,
@@ -28,6 +30,8 @@ class FeedVideoPlayerWrapper extends StatefulWidget {
     this.showControls = false,
     this.isReelsMode = false,
     this.onReelsTap,
+    this.disablePlayPause = false,
+    this.isolateButtonTaps = false,
   }) : super(key: key);
 
   @override
@@ -35,6 +39,10 @@ class FeedVideoPlayerWrapper extends StatefulWidget {
 }
 
 class _FeedVideoPlayerWrapperState extends State<FeedVideoPlayerWrapper> {
+  bool get isPlaying =>
+      widget.feedController.currentlyPlayingId == widget.videoId &&
+          widget.feedController.isVideoPlaying(widget.videoId);
+
   @override
   void initState() {
     super.initState();
@@ -58,9 +66,18 @@ class _FeedVideoPlayerWrapperState extends State<FeedVideoPlayerWrapper> {
     setState(() {});
   }
 
+  void _togglePlayPause() {
+    if (isPlaying) {
+      widget.feedController.pauseVideo(widget.videoId);
+    } else {
+      widget.feedController.playVideoById(widget.videoId);
+    }
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    // In reels mode, don't add the overlay tap handler
+    // In reels mode
     if (widget.isReelsMode) {
       return Stack(
         children: [
@@ -76,85 +93,138 @@ class _FeedVideoPlayerWrapperState extends State<FeedVideoPlayerWrapper> {
             autoPlay: widget.autoPlay,
             showControls: false,
             isReelsMode: true,
-            disablePlayPause: true, // Disable play/pause
+            disablePlayPause: true,
           ),
 
           // Mute button only (no reels button in reels mode)
           Positioned(
-            bottom: 20, // Position above the progress bar
-            left: 8,
+            bottom: 20,
+            right: 8,
+            width: 36,
+            height: 36,
             child: _buildControlButton(
               icon: widget.feedController.isMuted ? Icons.volume_off : Icons.volume_up,
               onTap: _toggleMute,
+              isolateTap: true,
+            ),
+          ),
+
+          // Play/Pause button for reels mode
+          Positioned(
+            bottom: 20,
+            right: 50,
+            width: 36,
+            height: 36,
+            child: _buildControlButton(
+              icon: isPlaying ? Icons.pause : Icons.play_arrow,
+              onTap: _togglePlayPause,
+              isolateTap: true,
             ),
           ),
         ],
       );
     }
 
-    // Regular mode - add tap handler for reels and control buttons
-    return GestureDetector(
-      onTap: widget.onReelsTap,
-      child: Stack(
-        children: [
-          // Main video player
-          FeedVideoPlayer(
-            url: widget.url,
-            videoId: widget.videoId,
-            maxHeight: widget.maxHeight,
-            maxWidth: widget.maxWidth,
-            feedController: widget.feedController,
-            onVideoEnd: widget.onVideoEnd,
-            borderRadius: widget.borderRadius,
-            autoPlay: widget.autoPlay,
-            showControls: false,
-            isReelsMode: false,
-            disablePlayPause: true, // Disable play/pause
-          ),
+    // Regular mode
+    return Stack(
+      children: [
+        // Main video player
+        FeedVideoPlayer(
+          url: widget.url,
+          videoId: widget.videoId,
+          maxHeight: widget.maxHeight,
+          maxWidth: widget.maxWidth,
+          feedController: widget.feedController,
+          onVideoEnd: widget.onVideoEnd,
+          borderRadius: widget.borderRadius,
+          autoPlay: widget.autoPlay,
+          showControls: false,
+          isReelsMode: false,
+          disablePlayPause: widget.disablePlayPause,
+        ),
 
-          // Mute button
-          Positioned(
-            bottom: 20, // Position above the progress bar
-            left: 8,
-            child: _buildControlButton(
-              icon: widget.feedController.isMuted ? Icons.volume_off : Icons.volume_up,
-              onTap: _toggleMute,
-            ),
+        // Play/Pause button (new)
+        Positioned(
+          bottom: 20,
+          right: 92,  // Position to the left of mute button
+          width: 36,
+          height: 36,
+          child: _buildControlButton(
+            icon: isPlaying ? Icons.pause : Icons.play_arrow,
+            onTap: _togglePlayPause,
+            isolateTap: widget.isolateButtonTaps,
           ),
+        ),
 
-          // Fullscreen button
-          Positioned(
-            bottom: 20, // Position above the progress bar
-            right: 8,
-            child: _buildControlButton(
-              icon: Icons.fullscreen,
-              onTap: () => widget.onReelsTap?.call(),
-            ),
+        // Mute button
+        Positioned(
+          bottom: 20,
+          right: 50,
+          width: 36,
+          height: 36,
+          child: _buildControlButton(
+            icon: widget.feedController.isMuted ? Icons.volume_off : Icons.volume_up,
+            onTap: _toggleMute,
+            isolateTap: widget.isolateButtonTaps,
           ),
-        ],
-      ),
+        ),
+
+        // Fullscreen button
+        Positioned(
+          bottom: 20,
+          right: 8,
+          width: 36,
+          height: 36,
+          child: _buildControlButton(
+            icon: Icons.fullscreen,
+            onTap: () {
+              if (widget.onReelsTap != null) {
+                widget.onReelsTap!();
+              }
+            },
+            isolateTap: widget.isolateButtonTaps,
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildControlButton({
     required IconData icon,
     required VoidCallback onTap,
+    required bool isolateTap,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque, // Important: Prevent tap propagation
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
+    // Use a more reliable Material/InkWell combo with proper hitTest behavior
+    Widget button = Material(
+      type: MaterialType.transparency,
+      child: Ink(
         decoration: BoxDecoration(
           color: Colors.black.withOpacity(0.6),
           shape: BoxShape.circle,
         ),
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: 20,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: CircleBorder(),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
         ),
       ),
     );
+
+    // If we need to isolate this button's taps from parent gesture detectors
+    if (isolateTap) {
+      return IgnorePointer(
+        ignoring: false, // Don't ignore this widget's own pointer events
+        child: button,
+      );
+    } else {
+      return button;
+    }
   }
 }

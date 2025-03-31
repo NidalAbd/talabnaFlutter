@@ -15,6 +15,8 @@ import 'package:talabna/blocs/category/subcategory_event.dart';
 import 'package:talabna/blocs/service_post/service_post_bloc.dart';
 import 'package:talabna/blocs/service_post/service_post_event.dart';
 import 'package:talabna/provider/language_change_notifier.dart';
+import 'package:talabna/routes.dart';
+import 'package:talabna/services/device_info_service.dart';
 import 'package:talabna/theme_cubit.dart';
 import 'package:talabna/utils/debug_logger.dart';
 import 'package:talabna/utils/fcm_handler.dart';
@@ -32,14 +34,16 @@ import 'screens/reel/reels_state_manager.dart';
 
 // Default language
 String language = 'ar';
+String appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
 
 class AppInitializer {
   // Global navigator key for routing
   static final GlobalKey<NavigatorState> navigatorKey =
-      GlobalKey<NavigatorState>();
+  GlobalKey<NavigatorState>();
 
   // Main app initialization
   static Future<void> initialize() async {
+
     try {
       // Keep splash screen visible during initialization
       final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -58,9 +62,15 @@ class AppInitializer {
         final navigationService = serviceLocator<NavigationService>();
         navigationService.initialize(navigatorKey);
 
-        // Initialize deep link service
+        // Initialize deep link service with deep link check
         final deepLinkService = serviceLocator<DeepLinkService>();
-        await deepLinkService.initialize();
+        bool isFromDeepLink = await deepLinkService.initialize();
+
+        // If opening from deep link, setup navigation stack
+        if (isFromDeepLink) {
+          DebugLogger.log('App initializing from deep link', category: 'INIT');
+          navigationService.setupDeepLinkNavigationStack();
+        }
 
         // Start preloading data in background
         _preloadAppDataInBackground();
@@ -79,9 +89,10 @@ class AppInitializer {
 
         // Request permissions in background (non-blocking)
         _requestPermissionsInBackground();
-
+        final appInfoService = AppInfoService();
+        await appInfoService.initialize();
         // Run the application with proper initialization
-        await _runApplication(prefs, isAuthenticated, userId);
+        await _runApplication(prefs, isAuthenticated, userId, isFromDeepLink);
 
         DebugLogger.log('App initialization completed successfully',
             category: 'INIT');
@@ -281,9 +292,9 @@ class AppInitializer {
     // Set navigation bar appearance
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
       systemNavigationBarColor:
-          isDarkTheme ? AppTheme.darkPrimaryColor : AppTheme.lightPrimaryColor,
+      isDarkTheme ? AppTheme.darkPrimaryColor : AppTheme.lightPrimaryColor,
       systemNavigationBarIconBrightness:
-          isDarkTheme ? Brightness.light : Brightness.dark,
+      isDarkTheme ? Brightness.light : Brightness.dark,
     ));
 
     DebugLogger.log(
@@ -314,9 +325,11 @@ class AppInitializer {
     }
   }
 
-  // Run the application
   static Future<void> _runApplication(
-      SharedPreferences prefs, bool isAuthenticated, int? userId) async {
+      SharedPreferences prefs,
+      bool isAuthenticated,
+      int? userId,
+      bool isFromDeepLink) async {
     final isDarkTheme = prefs.getBool('isDarkTheme') ?? true;
 
     // Initialize repositories
@@ -327,6 +340,32 @@ class AppInitializer {
 
     // Reset ReelsStateManager
     ReelsStateManager().forceReleaseLocks();
+
+    // Check for any pending deep links before creating the app
+    final pendingDeepLinkType = prefs.getString('pending_deep_link_type');
+    final pendingDeepLinkId = prefs.getString('pending_deep_link_id');
+
+    // Set initial route for MaterialApp based on deep link
+    String initialRoute = Routes.initial;
+
+    // Pass the deep link state to Routes for better back navigation handling
+    if (isFromDeepLink) {
+      Routes.setOpeningFromDeepLink(true);
+    }
+
+    // Handle any pending deep links
+    if (isAuthenticated && userId != null && pendingDeepLinkType != null && pendingDeepLinkId != null) {
+      if (pendingDeepLinkType == DeepLinkService.TYPE_REELS) {
+        initialRoute = Routes.reels;
+        // Store deep link arguments for the route generator
+        Routes.setInitialRouteArgs({'postId': pendingDeepLinkId, 'userId': userId});
+        DebugLogger.log('Starting app with reel deep link: $pendingDeepLinkId', category: 'INIT');
+      } else if (pendingDeepLinkType == DeepLinkService.TYPE_SERVICE_POST) {
+        initialRoute = Routes.servicePost;
+        Routes.setInitialRouteArgs({'postId': pendingDeepLinkId});
+        DebugLogger.log('Starting app with service post deep link: $pendingDeepLinkId', category: 'INIT');
+      }
+    }
 
     // Run the app
     runApp(
@@ -353,12 +392,12 @@ class AppInitializer {
             isDarkTheme: isDarkTheme,
             navigatorKey: navigatorKey,
             autoAuthenticated: isAuthenticated,
+            initialRoute: initialRoute,
           );
         }),
       ),
     );
   }
-
   // Initialize bloc caches
   static void _initializeBlocCaches(BuildContext context) {
     try {

@@ -23,6 +23,7 @@ import 'package:talabna/utils/constants.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../../data/models/photos.dart';
+import '../../routes.dart';
 import '../../utils/debug_logger.dart';
 import '../../utils/photo_image_helper.dart';
 import '../../utils/premium_badge.dart';
@@ -32,10 +33,10 @@ import 'like_button.dart';
 class ReelsHomeScreen extends StatefulWidget {
   const ReelsHomeScreen(
       {super.key,
-      required this.userId,
-      this.servicePost,
-      required this.user,
-      this.postId});
+        required this.userId,
+        this.servicePost,
+        required this.user,
+        this.postId});
 
   final int userId;
   final User user;
@@ -65,6 +66,7 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
   int _currentPostIndex = 0;
   bool _isLoadingNextPage = false;
   DateTime? _lastPageLoadTime;
+  static final Set<int> _incrementedReelIds = {};
 
   // Video control
   final Map<int, VideoPlayerController> _videoControllers = {};
@@ -230,6 +232,22 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
           category: 'REELS');
 
       _loadNextPage();
+    }
+  }
+
+  void _incrementReelViewCount(int reelId) {
+    // Only increment view count once per reel per app session
+    if (!_incrementedReelIds.contains(reelId)) {
+      _incrementedReelIds.add(reelId);
+      _servicePostBloc.add(
+          ViewIncrementServicePostEvent(servicePostId: reelId));
+      DebugLogger.log(
+          'Incrementing view count for reel ID: $reelId',
+          category: 'REELS');
+    } else {
+      DebugLogger.log(
+          'View already incremented for reel $reelId, skipping',
+          category: 'REELS');
     }
   }
 
@@ -399,13 +417,20 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
         final int postId = int.parse(widget.postId!);
         final bool foundPost = _servicePosts.any((post) => post.id == postId);
 
-        // If the specific post is found, request more posts for swiping
-        if (foundPost && !_hasReachedMax) {
+        // If the specific post is found, increment its view count
+        if (foundPost) {
+          _incrementReelViewCount(postId);
+
           // When in a single-post view, preload next page to allow continued swiping
-          Timer(Duration(milliseconds: 300), () {
-            _preloadNextPage();
-          });
+          if (!_hasReachedMax) {
+            Timer(Duration(milliseconds: 300), () {
+              _preloadNextPage();
+            });
+          }
         }
+
+        // Mark as valid for future deep links
+        ReelsStateManager().markPostAsValid(widget.postId!);
       }
 
       // Initialize media indices for all posts
@@ -437,10 +462,18 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
           _currentPostIndex = pageIndex;
           _pageController.jumpToPage(pageIndex);
 
-          // Schedule playback
+          // Schedule playback and increment view count for initial page
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _handlePageChange(_currentPostIndex);
           });
+        } else {
+          // If not a deep link, increment view for the first visible reel
+          if (_servicePosts.isNotEmpty && _currentPostIndex < _servicePosts.length) {
+            final firstVisiblePost = _servicePosts[_currentPostIndex];
+            if (firstVisiblePost.id != null) {
+              _incrementReelViewCount(firstVisiblePost.id!);
+            }
+          }
         }
       }
     });
@@ -471,18 +504,27 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
     }
   }
 
+// In ReelsHomeScreen class, update the onWillPop method
   Future<bool> _onWillPop() async {
     // Mark as inactive before popping
     if (widget.postId != null) {
       ReelsStateManager().markReelInactive(widget.postId!);
     }
 
-    // Use a fade transition when popping
     if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop();
+      return false;
+    } else {
+      // Critical fix: If the screen was opened directly from a deep link
+      // Navigate to home with full stack replacement
+      final userId = widget.userId;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        Routes.home,
+            (route) => false,
+        arguments: {'userId': userId},
+      );
+      return false;
     }
-
-    return false;
   }
 
   @override
@@ -787,15 +829,15 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
         valueListenable: _videoProgress,
         builder: (context, value, child) {
           double maxSeconds =
-              _videoControllers[media.id!]?.value.isInitialized == true
-                  ? _videoControllers[media.id!]!
-                      .value
-                      .duration
-                      .inSeconds
-                      .toDouble()
-                  : 0.0;
+          _videoControllers[media.id!]?.value.isInitialized == true
+              ? _videoControllers[media.id!]!
+              .value
+              .duration
+              .inSeconds
+              .toDouble()
+              : 0.0;
           double currentSeconds =
-              min(_videoProgress.value.inSeconds.toDouble(), maxSeconds);
+          min(_videoProgress.value.inSeconds.toDouble(), maxSeconds);
 
           return SliderTheme(
             data: SliderThemeData(
@@ -838,7 +880,7 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: List.generate(
           post.photos!.length,
-          (index) => Container(
+              (index) => Container(
             width: 8,
             height: 8,
             margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -863,6 +905,8 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
           _buildUserAvatarWithFollowButton(post),
           const SizedBox(height: 10),
           _buildLikeButton(post),
+          const SizedBox(height: 10),
+
           _buildCommentButton(post),
           const SizedBox(height: 10),
           _buildContactButton(post),
@@ -932,6 +976,9 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
 
             return completer.future;
           },
+          iconSize: _iconSize,
+          unlikedColor: Colors.white,
+
         ),
       ],
     );
@@ -1034,6 +1081,7 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
               ),
             ),
           PremiumBadge(
+            size: 25,
             badgeType: post.haveBadge ?? 'عادي',
             userID: widget.userId,
           ),
@@ -1186,14 +1234,14 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
       // Listeners
       final List<VoidCallback> listeners = [
         // Error listener
-        () {
+            () {
           if (controller!.value.hasError && kDebugMode) {
             print('Video player error: ${controller.value.errorDescription}');
           }
         },
 
         // Loop listener
-        () {
+            () {
           if (controller!.value.position >=
               controller.value.duration - const Duration(milliseconds: 300)) {
             controller.seekTo(Duration.zero);
@@ -1202,7 +1250,7 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
         },
 
         // Progress listener
-        () {
+            () {
           if (!_isUserChangingSlider && mounted) {
             _videoProgress.value = controller!.value.position;
           }
@@ -1239,6 +1287,11 @@ class _ReelsHomeScreenState extends State<ReelsHomeScreen>
 
     _currentPostIndex = pageIndex;
     final currentPost = _servicePosts[pageIndex];
+
+    // Increment view count for the newly visible reel
+    if (currentPost.id != null) {
+      _incrementReelViewCount(currentPost.id!);
+    }
 
     if (currentPost.photos == null || currentPost.photos!.isEmpty) {
       return;

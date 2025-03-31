@@ -7,47 +7,24 @@ import 'package:talabna/utils/debug_logger.dart';
 /// that coordinates with the unified deep linking and navigation flow
 class ReelsStateManager {
   static final ReelsStateManager _instance = ReelsStateManager._internal();
-
   factory ReelsStateManager() => _instance;
-
   ReelsStateManager._internal();
-
-  // Track active screens by postId
   final Set<String> _activeScreens = {};
-
-  // Track pending initializations to avoid race conditions
   final Set<String> _pendingInitializations = {};
-
-  // Track processed deep links
   final Set<String> _processedDeepLinks = {};
-
-  // Track valid post IDs
   final Set<String> _validPostIds = {};
-
-  // Navigation lock management
   bool _isNavigationLocked = false;
   DateTime? _lastNavigationAttempt;
   static const int NAVIGATION_COOLDOWN_MS = 800;
-
-  // Lock duration for various operations
   final Duration _lockDuration = Duration(seconds: 3);
-
-  // Lock timers
   Timer? _navigationLockTimer;
-
-  // Public getters
   bool get isNavigationLocked => _isNavigationLocked;
-
   Set<String> get activeScreenIds => Set.from(_activeScreens);
-
   bool get hasActiveScreen => _activeScreens.isNotEmpty;
-
-  // Ensure we have a valid ID before operations
   String _sanitizeId(dynamic id) {
     if (id == null) return "unknown";
     return id.toString();
   }
-
   // Check if a screen with this post ID is already active
   bool isScreenActive(String postId) {
     postId = _sanitizeId(postId);

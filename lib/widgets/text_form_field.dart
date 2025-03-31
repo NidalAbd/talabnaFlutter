@@ -25,6 +25,8 @@ class TextFromField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Padding(
       padding: padding,
       child: SizedBox(
@@ -36,40 +38,35 @@ class TextFromField extends StatelessWidget {
           validator: (value) => validator(value),
           decoration: InputDecoration(
             prefixIcon: prefixIcon,
-            prefixIconColor: Theme.of(context).brightness == Brightness.dark
-                ? AppTheme.lightPrimaryColor
-                : AppTheme.darkPrimaryColor,
-            suffixIconColor: Theme.of(context).brightness == Brightness.dark
-                ? AppTheme.lightPrimaryColor
-                : AppTheme.darkPrimaryColor,
+            prefixIconColor: theme.iconTheme.color,
+            suffixIconColor: theme.iconTheme.color,
             suffixIcon: suffixIcon,
             hintText: hintText,
             filled: true,
+            fillColor: theme.inputDecorationTheme.fillColor,
             enabledBorder: OutlineInputBorder(
               borderSide: BorderSide(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppTheme.lightPrimaryColor
-                    : AppTheme.darkPrimaryColor,
+                color: theme.colorScheme.outline.withOpacity(0.5),
               ),
               borderRadius: BorderRadius.circular(10),
             ),
             focusedBorder: OutlineInputBorder(
               borderSide: BorderSide(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppTheme.lightPrimaryColor
-                    : AppTheme.darkPrimaryColor,
+                color: theme.colorScheme.primary,
+                width: 1.5,
               ),
               borderRadius: BorderRadius.circular(10),
             ),
             errorBorder: OutlineInputBorder(
-              borderSide: const BorderSide(
-                color: Colors.red,
+              borderSide: BorderSide(
+                color: theme.colorScheme.error,
               ),
               borderRadius: BorderRadius.circular(10),
             ),
             focusedErrorBorder: OutlineInputBorder(
-              borderSide: const BorderSide(
-                color: Colors.red,
+              borderSide: BorderSide(
+                color: theme.colorScheme.error,
+                width: 1.5,
               ),
               borderRadius: BorderRadius.circular(10),
             ),

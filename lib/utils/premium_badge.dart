@@ -1,7 +1,5 @@
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-
 import '../provider/language.dart';
 import '../screens/profile/purchase_request_screen.dart';
 
@@ -15,7 +13,7 @@ class PremiumBadge extends StatelessWidget {
   PremiumBadge({
     super.key,
     required this.badgeType,
-    this.size = 20,
+    this.size = 40,
     this.showText = true,
     this.fontSize = 14,
     required this.userID,
@@ -53,83 +51,49 @@ class PremiumBadge extends StatelessWidget {
     }
 
     final isPremiumGold = badgeType == 'ذهبي';
-    final isPremiumDiamond = badgeType == 'ماسي';
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    // Enhanced color palette
     final Color primaryColor = isPremiumGold
-        ? const Color(0xFFFFD700) // Gold
+        ? const Color(0xFFF86800) // Gold
         : const Color(0xFF00CCFF); // Diamond blue
 
     final Color secondaryColor = isPremiumGold
         ? const Color(0xFFFF9D00) // Deep gold
         : const Color(0xFF0088FF); // Deep blue
 
-    final Color glowColor = isPremiumGold
-        ? const Color(0xFFFFF0B3).withOpacity(0.7) // Light gold glow
-        : const Color(0xFFB3F0FF).withOpacity(0.7); // Light blue glow
+    final Color textColor = isDarkMode
+        ? primaryColor
+        : isPremiumGold ? const Color(0xFFFFAF00) : const Color(0xFF0066CC);
+
+    final Color backgroundColor = isDarkMode
+        ? Theme.of(context).cardColor.withOpacity(0.2)
+        : primaryColor.withOpacity(0.1);
 
     final TextStyle badgeTextStyle = TextStyle(
-      color: primaryColor,
+      color: textColor,
       fontWeight: FontWeight.bold,
       fontSize: fontSize,
       letterSpacing: 0.5,
-      shadows: [
-        Shadow(
-          color: secondaryColor.withOpacity(0.8),
-          blurRadius: 3,
-          offset: const Offset(0, 1),
-        ),
-      ],
     );
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _navigateToPurchase(context),
-        borderRadius: BorderRadius.circular(30),
-        splashColor: glowColor.withOpacity(0.3),
-        highlightColor: glowColor.withOpacity(0.2),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showText) ...[
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        primaryColor.withOpacity(0.1),
-                        primaryColor.withOpacity(0.2),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: primaryColor.withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Text(
-                    _getLocalizedBadgeText(),
-                    style: badgeTextStyle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-
-              // Enhanced badge icon
-              AnimatedPremiumIcon(
-                isPremiumGold: isPremiumGold,
-                size: size,
-                primaryColor: primaryColor,
-                secondaryColor: secondaryColor,
-                glowColor: glowColor,
-              ),
-            ],
+        borderRadius: BorderRadius.circular(16),
+        splashColor: primaryColor.withOpacity(0.2),
+        highlightColor: primaryColor.withOpacity(0.1),
+        child: AnimatedBadgeBorder(
+          badgeType: badgeType,
+          primaryColor: primaryColor,
+          secondaryColor: secondaryColor,
+          backgroundColor: backgroundColor,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Text(
+              _getLocalizedBadgeText(),
+              style: badgeTextStyle,
+            ),
           ),
         ),
       ),
@@ -137,61 +101,46 @@ class PremiumBadge extends StatelessWidget {
   }
 }
 
-class AnimatedPremiumIcon extends StatefulWidget {
-  final bool isPremiumGold;
-  final double size;
+class AnimatedBadgeBorder extends StatefulWidget {
+  final Widget child;
+  final String badgeType;
   final Color primaryColor;
   final Color secondaryColor;
-  final Color glowColor;
+  final Color backgroundColor;
 
-  const AnimatedPremiumIcon({
+  const AnimatedBadgeBorder({
     Key? key,
-    required this.isPremiumGold,
-    required this.size,
+    required this.child,
+    required this.badgeType,
     required this.primaryColor,
     required this.secondaryColor,
-    required this.glowColor,
+    required this.backgroundColor,
   }) : super(key: key);
 
   @override
-  State<AnimatedPremiumIcon> createState() => _AnimatedPremiumIconState();
+  State<AnimatedBadgeBorder> createState() => _AnimatedBadgeBorderState();
 }
 
-class _AnimatedPremiumIconState extends State<AnimatedPremiumIcon>
+class _AnimatedBadgeBorderState extends State<AnimatedBadgeBorder>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _rotationAnimation;
-  late Animation<double> _opacityAnimation;
 
   @override
   void initState() {
     super.initState();
+    // Very slow animation for elegant movement
     _controller = AnimationController(
-      duration: const Duration(seconds: 3),
+      duration: const Duration(milliseconds: 15000),
       vsync: this,
-    )..repeat(reverse: true);
-
-    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOut,
-      ),
     );
 
-    _rotationAnimation = Tween<double>(begin: -0.05, end: 0.05).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    _opacityAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOut,
-      ),
-    );
+    // Start from a specific position and loop continuously
+    _controller.forward(from: 0.0);
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _controller.forward(from: 0.0); // Restart from the beginning
+      }
+    });
   }
 
   @override
@@ -205,153 +154,206 @@ class _AnimatedPremiumIconState extends State<AnimatedPremiumIcon>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return Transform.rotate(
-          angle: _rotationAnimation.value,
+        return CustomPaint(
+          painter: AnimatedBorderPainter(
+            progress: _controller.value,
+            primaryColor: widget.primaryColor,
+            secondaryColor: widget.secondaryColor,
+            badgeType: widget.badgeType,
+          ),
           child: Container(
-            height: widget.size * 1.5,
-            width: widget.size * 1.5,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Outer glow
-                Container(
-                  width: widget.size * 1.2,
-                  height: widget.size * 1.2,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: widget.glowColor
-                            .withOpacity(_opacityAnimation.value * 0.8),
-                        blurRadius: widget.size / 2,
-                        spreadRadius: widget.size / 8,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Animated background
-                Opacity(
-                  opacity: _opacityAnimation.value * 0.7,
-                  child: Container(
-                    width: widget.size * 1.1,
-                    height: widget.size * 1.1,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          widget.primaryColor.withOpacity(0.7),
-                          widget.secondaryColor.withOpacity(0.1),
-                        ],
-                        stops: const [0.5, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Icon with scale animation
-                Transform.scale(
-                  scale: _scaleAnimation.value,
-                  child: Container(
-                    width: widget.size,
-                    height: widget.size,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        // Base icon
-                        Icon(
-                          widget.isPremiumGold
-                              ? Icons.stars_rounded
-                              : Icons.diamond_rounded,
-                          color: widget.primaryColor,
-                          size: widget.size,
-                        ),
-
-                        // Shine overlay
-                        ClipOval(
-                          child: ShaderMask(
-                            shaderCallback: (bounds) => LinearGradient(
-                              colors: [
-                                Colors.transparent,
-                                Colors.white.withOpacity(0.8),
-                                Colors.transparent,
-                              ],
-                              stops: const [0.0, 0.5, 1.0],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ).createShader(bounds),
-                            blendMode: BlendMode.srcATop,
-                            child: Container(
-                              color: Colors.white.withOpacity(0.3),
-                              height: widget.size,
-                              width: widget.size,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Particle effects
-                if (widget.isPremiumGold)
-                  ...List.generate(5, (index) {
-                    final angle = index * (math.pi * 2 / 5);
-                    final distance = widget.size * 0.7 * _scaleAnimation.value;
-                    final offset = Offset(
-                      math.cos(angle + _controller.value * math.pi) * distance,
-                      math.sin(angle + _controller.value * math.pi) * distance,
-                    );
-
-                    return Positioned(
-                      left: widget.size * 0.75 + offset.dx,
-                      top: widget.size * 0.75 + offset.dy,
-                      child: Opacity(
-                        opacity: _opacityAnimation.value * 0.4,
-                        child: Container(
-                          width: widget.size * 0.1,
-                          height: widget.size * 0.1,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: widget.primaryColor,
-                          ),
-                        ),
-                      ),
-                    );
-                  })
-                else
-                  ...List.generate(3, (index) {
-                    final angle = index * (math.pi * 2 / 3);
-                    final distance =
-                        widget.size * 0.6 * _opacityAnimation.value;
-                    final offset = Offset(
-                      math.cos(angle + _controller.value * math.pi * 2) *
-                          distance,
-                      math.sin(angle + _controller.value * math.pi * 2) *
-                          distance,
-                    );
-
-                    return Positioned(
-                      left: widget.size * 0.75 + offset.dx,
-                      top: widget.size * 0.75 + offset.dy,
-                      child: Transform.rotate(
-                        angle: _controller.value * math.pi,
-                        child: Opacity(
-                          opacity: 0.6 - (_controller.value * 0.3),
-                          child: Icon(
-                            Icons.star,
-                            color: widget.primaryColor,
-                            size: widget.size * 0.2,
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-              ],
+            decoration: BoxDecoration(
+              color: widget.backgroundColor,
+              borderRadius: BorderRadius.circular(16),
             ),
+            child: child,
           ),
         );
       },
+      child: widget.child,
     );
   }
+}
+
+class AnimatedBorderPainter extends CustomPainter {
+  final double progress;
+  final Color primaryColor;
+  final Color secondaryColor;
+  final String badgeType;
+
+  AnimatedBorderPainter({
+    required this.progress,
+    required this.primaryColor,
+    required this.secondaryColor,
+    required this.badgeType,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    final isPremiumGold = badgeType == 'ذهبي';
+
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(16));
+
+    // Draw border
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..color = primaryColor.withOpacity(0.6);
+
+    canvas.drawRRect(rrect, borderPaint);
+
+    // Calculate positions for particles
+    final position1 = _getPositionOnBorder(size.width, size.height, 16, progress);
+
+    // Draw main particle
+    _drawParticle(canvas, position1.x, position1.y, primaryColor, secondaryColor, isPremiumGold);
+
+    // If it's a diamond badge, add a second particle at a different position
+    if (!isPremiumGold) {
+      final position2 = _getPositionOnBorder(size.width, size.height, 16, (progress + 0.5) % 1.0);
+      _drawParticle(canvas, position2.x, position2.y, primaryColor, secondaryColor, isPremiumGold);
+    }
+  }
+
+  void _drawParticle(Canvas canvas, double x, double y, Color color, Color secondColor, bool isGold) {
+    // Main particle
+    final particlePaint = Paint()
+      ..color = isGold ? secondColor : color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(Offset(x, y), 2.8, particlePaint);
+
+    // Glowing effect
+    final glowPaint = Paint()
+      ..color = isGold ? secondColor.withOpacity(0.4) : color.withOpacity(0.4)
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5);
+
+    canvas.drawCircle(Offset(x, y), 4.5, glowPaint);
+
+    // Trail effect - draw multiple smaller circles behind main particle
+    final trailLength = isGold ? 0.03 : 0.04;
+    final trailSegments = 5;
+
+    for (int i = 1; i <= trailSegments; i++) {
+      // Calculate position for this trail segment
+      final trailProgress = (progress - (i * trailLength / trailSegments));
+      if (trailProgress < 0) continue; // Skip if it would wrap around
+
+      final trailPos = _getPositionOnBorder(
+          lastSize.width,
+          lastSize.height,
+          16,
+          trailProgress % 1.0
+      );
+
+      final trailOpacity = (1 - (i / trailSegments)) * 0.4;
+      final trailSize = 2.5 * (1 - (i / trailSegments));
+
+      final trailPaint = Paint()
+        ..style = PaintingStyle.fill
+        ..color = isGold ?
+        secondColor.withOpacity(trailOpacity) :
+        color.withOpacity(trailOpacity);
+
+      canvas.drawCircle(Offset(trailPos.x, trailPos.y), trailSize, trailPaint);
+    }
+  }
+
+  // Keep track of the last size to ensure consistent trail calculations
+  Size lastSize = Size.zero;
+
+  Point _getPositionOnBorder(double width, double height, double radius, double progress) {
+    // Save the size for trail calculations
+    lastSize = Size(width, height);
+
+    // Calculate the perimeter of the rounded rectangle
+    final double straightHorizontal = width - 2 * radius;
+    final double straightVertical = height - 2 * radius;
+    final double cornerArc = math.pi * radius / 2;
+
+    // Total perimeter
+    final double perimeter = 2 * straightHorizontal +
+        2 * straightVertical +
+        4 * cornerArc;
+
+    // Distance along the perimeter based on progress
+    double distance = perimeter * progress;
+
+    // ===== TOP EDGE (left to right) =====
+    if (distance <= straightHorizontal) {
+      return Point(radius + distance, 0);
+    }
+    distance -= straightHorizontal;
+
+    // ===== TOP-RIGHT CORNER =====
+    if (distance <= cornerArc) {
+      final angle = distance / radius;
+      return Point(
+          width - radius + math.sin(angle) * radius,
+          radius - math.cos(angle) * radius
+      );
+    }
+    distance -= cornerArc;
+
+    // ===== RIGHT EDGE (top to bottom) =====
+    if (distance <= straightVertical) {
+      return Point(width, radius + distance);
+    }
+    distance -= straightVertical;
+
+    // ===== BOTTOM-RIGHT CORNER =====
+    if (distance <= cornerArc) {
+      final angle = distance / radius;
+      return Point(
+          width - radius + math.cos(angle) * radius,
+          height - radius + math.sin(angle) * radius
+      );
+    }
+    distance -= cornerArc;
+
+    // ===== BOTTOM EDGE (right to left) =====
+    if (distance <= straightHorizontal) {
+      return Point(width - radius - distance, height);
+    }
+    distance -= straightHorizontal;
+
+    // ===== BOTTOM-LEFT CORNER =====
+    if (distance <= cornerArc) {
+      final angle = distance / radius;
+      return Point(
+          radius - math.sin(angle) * radius,
+          height - radius + math.cos(angle) * radius
+      );
+    }
+    distance -= cornerArc;
+
+    // ===== LEFT EDGE (bottom to top) =====
+    if (distance <= straightVertical) {
+      return Point(0, height - radius - distance);
+    }
+    distance -= straightVertical;
+
+    // ===== TOP-LEFT CORNER =====
+    final angle = distance / radius;
+    return Point(
+        radius - math.cos(angle) * radius,
+        radius - math.sin(angle) * radius
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant AnimatedBorderPainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
+}
+
+class Point {
+  final double x;
+  final double y;
+
+  Point(this.x, this.y);
 }

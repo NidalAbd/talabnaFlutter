@@ -10,6 +10,7 @@ import 'package:talabna/screens/profile/user_seller.dart';
 
 import '../../app_theme.dart';
 import '../../provider/language.dart';
+import '../transactions/transactions_screen.dart';
 
 class PurchaseRequestScreen extends StatefulWidget {
   final int userID;
@@ -51,6 +52,15 @@ class PurchaseRequestScreenState extends State<PurchaseRequestScreen> {
     super.dispose();
   }
 
+  void _navigateToTransactionsHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TransactionsScreen(userId: widget.userID),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -74,6 +84,17 @@ class PurchaseRequestScreenState extends State<PurchaseRequestScreen> {
           color: Theme.of(context).colorScheme.onBackground,
         ),
         actions: [
+          // Add this IconButton for transaction history
+          IconButton(
+            icon: Icon(
+              Icons.history,
+              color: Theme.of(context).colorScheme.onBackground,
+            ),
+            tooltip: _language.getLanguage() == 'ar'
+                ? 'سجل المعاملات'
+                : 'Transaction History',
+            onPressed: _navigateToTransactionsHistory,
+          ),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: PointBalance(

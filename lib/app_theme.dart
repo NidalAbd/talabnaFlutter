@@ -15,21 +15,21 @@ class AppTheme {
 
   // Light Theme Colors
   static const Color lightPrimaryColor = Color(0xFFFF6B35); // Modern Indigo
-  static const Color lightSecondaryColor = Color(0xFFFFC107); // Teal
-  static const Color lightBackgroundColor = Color(0xFFF8F9FA); // Off-white
+  static const Color lightSecondaryColor = Color(0xFFFF6B35); // Teal
+  static const Color lightBackgroundColor = Color(0xFFF8F8F8); // Off-white
   static const Color lightTextColor =
-      Color(0xFF000000); // Pure Black for all text
-  static const Color lightDisabledColor = Color(0xFFBDBDBD); // Light Grey
+  Color(0xFF000000); // Pure Black for all text
+  static const Color lightDisabledColor = Color(0xFFFFFFFF); // Light Grey
   static const Color lightErrorColor =
-      Color(0xFFB00020); // Material Design error red
+  Color(0xFFB00020); // Material Design error red
   static const Color lightIconColor = Color(0xFF000000); // Black
 
   // Dark Theme Colors - Keeping these as is since you said dark design is OK
-  static const Color darkPrimaryColor = Color(0xFF000000); // Dark Grey
-  static const Color darkSecondaryColor = Color(0xFFFFC107); // Amber
-  static const Color darkBackgroundColor = Color(0xFF1C1C1C); // Very Dark Grey
+  static const Color darkPrimaryColor = Color(0xFF121212); // Dark Grey
+  static const Color darkSecondaryColor = Color(0xFFFF6B35); // Amber
+  static const Color darkBackgroundColor = Color(0xFF191919); // Very Dark Grey
   static const Color darkTextColor =
-      Color(0xFFFFFFFF); // Pure White for all text
+  Color(0xFFFFFFFF); // Pure White for all text
   static const Color darkDisabledColor = Color(0xFF393939); // Darker Grey
   static const Color darkErrorColor = Color(0xFFCF6679); // Red
   static const Color darkIconColor = Color(0xFFFFFFFF); // White
@@ -60,7 +60,7 @@ class AppTheme {
         systemNavigationBarColor: Colors.white,
         // Pure white navigation bar
         systemNavigationBarIconBrightness:
-            Brightness.dark, // Dark icons for light background
+        Brightness.dark, // Dark icons for light background
       ),
     ),
     iconTheme: const IconThemeData(color: lightIconColor),
@@ -200,12 +200,12 @@ class AppTheme {
     ),
     switchTheme: SwitchThemeData(
       thumbColor:
-          WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
+      WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
         if (states.contains(WidgetState.selected)) return lightPrimaryColor;
         return Colors.grey.shade400;
       }),
       trackColor:
-          WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
+      WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
         if (states.contains(WidgetState.selected))
           return lightPrimaryColor.withOpacity(0.5);
         return Colors.grey.shade300;
@@ -239,7 +239,7 @@ class AppTheme {
         systemNavigationBarColor: darkPrimaryColor,
         // Black navigation bar
         systemNavigationBarIconBrightness:
-            Brightness.light, // Light icons for dark background
+        Brightness.light, // Light icons for dark background
       ),
     ),
     iconTheme: const IconThemeData(color: darkIconColor),

@@ -7,13 +7,23 @@ import 'package:talabna/blocs/notification/notifications_state.dart';
 import 'package:talabna/data/models/notifications.dart';
 
 // Import the shimmer widgets
+import '../../blocs/service_post/service_post_bloc.dart';
+import '../../blocs/service_post/service_post_event.dart';
+import '../../blocs/service_post/service_post_state.dart';
+import '../../data/models/service_post.dart';
+import '../../data/models/user.dart';
 import '../../main.dart';
 import '../../provider/language.dart';
+import '../../routes.dart';
+import '../../services/service_post_deep_link_handler.dart';
+import '../../utils/debug_logger.dart';
+import '../../utils/premium_badge.dart';
+import '../service_post/service_post_view.dart';
 import '../widgets/shimmer_widgets.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key, required this.userID});
-
+  const NotificationsScreen({super.key, required this.userID, required this.user});
+  final User user;
   final int userID;
 
   @override
@@ -59,6 +69,69 @@ class NotificationsScreenState extends State<NotificationsScreen>
     super.dispose();
   }
 
+  void _handleNotificationTap(Notifications notification) {
+    // Mark notification as read first
+    _handleNotificationMarkedAsRead(notification.id);
+
+    // Check if this is a post-related notification
+    final int? postId = notification.extractPostId();
+    if (postId != null) {
+      DebugLogger.log(
+          'Tapped notification with post ID: $postId',
+          category: 'NOTIFICATION'
+      );
+
+      // Navigate directly to our simple post view
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => NotificationPostView(
+            postId: postId.toString(),
+            userId: widget.userID, user: widget.user,
+          ),
+        ),
+      );
+    }
+  }
+
+  // Helper method to extract post ID from notification
+  int? _extractPostIdFromNotification(Notifications notification) {
+    try {
+      // Get message text in preferred language
+      String messageText = '';
+      if (notification.message.containsKey(_language.getLanguage())) {
+        messageText = notification.message[_language.getLanguage()]!;
+      } else if (notification.message.containsKey('en')) {
+        messageText = notification.message['en']!;
+      } else if (notification.message.containsKey('ar')) {
+        messageText = notification.message['ar']!;
+      } else {
+        return null;
+      }
+
+      // Use regular expression to find post ID pattern [post_id:123]
+      final RegExp postIdRegex = RegExp(r'\[post_id:(\d+)\]');
+      final match = postIdRegex.firstMatch(messageText);
+
+      if (match != null && match.groupCount >= 1) {
+        return int.parse(match.group(1)!);
+      }
+
+      return null;
+    } catch (e) {
+      DebugLogger.log(
+          'Error extracting post ID from notification: $e',
+          category: 'NOTIFICATION_ERROR'
+      );
+      return null;
+    }
+  }
+
+// Helper to check if notification is related to a post
+  bool _isPostNotification(Notifications notification) {
+    return notification.type == 'post' ||
+        notification.type == 'badge' ||
+        _extractPostIdFromNotification(notification) != null;
+  }
   void _onScroll() {
     if (!_hasReachedMax &&
         _scrollController.offset >=
@@ -99,7 +172,7 @@ class NotificationsScreenState extends State<NotificationsScreen>
   }
 
   // Handle individual notification being marked as read
-  void _handleNotificationMarkedAsRead(int notificationId) {
+  bool _handleNotificationMarkedAsRead(int notificationId) {
     // Update local tracking immediately for UI response
     setState(() {
       _locallyMarkedAsRead.add(notificationId);
@@ -113,7 +186,7 @@ class NotificationsScreenState extends State<NotificationsScreen>
       ),
     );
 
-    // Show status update to user with a more subtle snackbar
+    // Show status update to user with a subtle snackbar
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -134,6 +207,8 @@ class NotificationsScreenState extends State<NotificationsScreen>
         ),
       ),
     );
+
+    return true;
   }
 
   // Handle all notifications being marked as read
@@ -451,38 +526,58 @@ class NotificationsScreenState extends State<NotificationsScreen>
                                   ),
                                   trailing: !isRead
                                       ? Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            color: isDarkMode
-                                                ? Colors.grey[800]!
-                                                    .withOpacity(0.5)
-                                                : Colors.grey[200]!
-                                                    .withOpacity(0.5),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: IconButton(
-                                            icon: Icon(
-                                              Icons.check,
-                                              size: 18,
-                                              color: theme
-                                                  .textTheme.bodyMedium?.color,
-                                            ),
-                                            onPressed: () =>
-                                                _handleNotificationMarkedAsRead(
-                                                    notification.id),
-                                            tooltip: 'Mark as read',
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                        )
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: isDarkMode
+                                          ? Colors.grey[800]!.withOpacity(0.5)
+                                          : Colors.grey[200]!.withOpacity(0.5),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: IconButton(
+                                      icon: notification.isPostRelated()
+                                          ? Icon(
+                                        Icons.article_outlined,
+                                        size: 18,
+                                        color: theme.colorScheme.secondary,
+                                      )
+                                          : Icon(
+                                        Icons.check,
+                                        size: 18,
+                                        color: theme.textTheme.bodyMedium?.color,
+                                      ),
+                                      onPressed: () => notification.isPostRelated()
+                                          ? _handleNotificationTap(notification)
+                                          : _handleNotificationMarkedAsRead(notification.id),
+                                      tooltip: notification.isPostRelated()
+                                          ? 'View post'
+                                          : 'Mark as read',
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  )
+                                      : notification.isPostRelated()
+                                      ? Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: isDarkMode
+                                          ? Colors.grey[800]!.withOpacity(0.5)
+                                          : Colors.grey[200]!.withOpacity(0.5),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: IconButton(
+                                      icon: Icon(
+                                        Icons.article_outlined,
+                                        size: 18,
+                                        color: theme.colorScheme.secondary,
+                                      ),
+                                      onPressed: () => _handleNotificationTap(notification),
+                                      tooltip: 'View post',
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                  )
                                       : null,
-                                  onTap: () {
-                                    if (!isRead) {
-                                      _handleNotificationMarkedAsRead(
-                                          notification.id);
-                                    }
-                                    // Handle notification tap action here
-                                  },
+                                  onTap: () => _handleNotificationTap(notification),
                                 ),
                               ),
                             ),
@@ -644,6 +739,193 @@ class NotificationsScreenState extends State<NotificationsScreen>
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+class NotificationPostView extends StatefulWidget {
+  final String postId;
+  final int userId;
+  final User user;
+
+  const NotificationPostView({
+    Key? key,
+    required this.postId,
+    required this.userId,
+    required this.user,
+
+  }) : super(key: key);
+
+  @override
+  _NotificationPostViewState createState() => _NotificationPostViewState();
+}
+
+class _NotificationPostViewState extends State<NotificationPostView> {
+  @override
+  void initState() {
+    super.initState();
+    // Load the service post data
+    DebugLogger.log(
+        'NotificationPostView loading post ID: ${widget.postId}',
+        category: 'NOTIFICATION'
+    );
+
+    context.read<ServicePostBloc>().add(
+      GetServicePostByIdEvent(
+        int.parse(widget.postId),
+        forceRefresh: true,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        // Handle back navigation - go back to notifications
+        Navigator.of(context).pop();
+        return false;
+      },
+      child: BlocBuilder<ServicePostBloc, ServicePostState>(
+        builder: (context, state) {
+          print('we have this state now : $state');
+          // Success state with post data
+          if (state is ServicePostLoadSuccess) {
+            // Try to find the post
+            ServicePost? post;
+            try {
+              post = state.servicePosts.firstWhere(
+                    (p) => p.id == int.parse(widget.postId),
+              );
+            } catch (_) {
+              // Post not found in state
+              post = null;
+            }
+
+            // If post found, show post view
+            if (post != null) {
+              final user = User(
+                id: widget.userId,
+                name: '', // These fields will be populated by the view
+                userName: '',
+                email: '',
+              );
+
+              final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+              return Scaffold(
+                appBar: AppBar(
+                  elevation: 0,
+                  backgroundColor: isDarkMode ? Colors.black : Colors.white,
+                  scrolledUnderElevation: 1,
+                  centerTitle: false,
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          post.title ?? '',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // Show premium badge if applicable
+                      if (post.haveBadge != 'عادي')
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: PremiumBadge(
+                            badgeType: post.haveBadge ?? 'عادي',
+                            size: 22,
+                            userID: widget.userId,
+                          ),
+                        ),
+                    ],
+                  ),
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+                body: ServicePostCardView(
+                  userProfileId: widget.userId,
+                  servicePost: post,
+                  canViewProfile: true,
+                  user: user,
+                  onPostDeleted: () => Navigator.of(context).pop(),
+                  noAppBar: true, // Ensure no duplicate app bar
+                ),
+              );
+            }
+          }
+
+          // Failure state
+          if (state is ServicePostOperationFailure) {
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Error'),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Failed to load post',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Post ID: ${widget.postId}',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () {
+                      },
+                      child: const Text('Try Again'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Go Back'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // Loading state (default)
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('Loading Post'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            body: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading post...'),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

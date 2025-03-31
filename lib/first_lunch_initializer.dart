@@ -139,7 +139,7 @@ class FirstLaunchInitializer {
       // Default to category 1 for initial subcategories
       final defaultCategory = 1;
       final subcategories =
-          await categoriesRepository.getSubCategoriesMenu(defaultCategory);
+      await categoriesRepository.getSubCategoriesMenu(defaultCategory);
       DebugLogger.log(
           'Fetched ${subcategories.length} subcategories for category $defaultCategory during initialization',
           category: 'INIT');

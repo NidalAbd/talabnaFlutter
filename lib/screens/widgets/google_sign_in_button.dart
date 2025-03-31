@@ -109,8 +109,7 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
         builder: (context, theme) {
           final isDarkMode = Theme.of(context).brightness == Brightness.dark;
           final primaryColor = isDarkMode
-              ? AppTheme.darkSecondaryColor
-              : AppTheme.lightPrimaryColor;
+              ? AppTheme.darkSecondaryColor : AppTheme.lightPrimaryColor;
           final backgroundColor = isDarkMode ? Colors.grey[800] : Colors.white;
           final textColor = isDarkMode ? Colors.white : Colors.black87;
 

@@ -16,6 +16,7 @@ import 'package:talabna/blocs/service_post/service_post_bloc.dart';
 import 'package:talabna/blocs/service_post/service_post_event.dart';
 import 'package:video_compress/video_compress.dart';
 
+import '../../app_theme.dart';
 import '../../data/models/photos.dart';
 import '../../provider/language.dart';
 import '../../utils/constants.dart';
@@ -371,6 +372,8 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       children: [
         Container(
@@ -461,7 +464,7 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: Theme.of(context).primaryColor.withOpacity(0.5),
+                        color: isDarkMode ? AppTheme.lightPrimaryColor : AppTheme.darkPrimaryColor,
                         width: 2,
                         style: BorderStyle.solid,
                       ),
@@ -472,13 +475,13 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
                         Icon(
                           Icons.add_photo_alternate_outlined,
                           size: 40,
-                          color: Theme.of(context).primaryColor,
+                          color: isDarkMode ? AppTheme.lightPrimaryColor : AppTheme.darkPrimaryColor,
                         ),
                         const SizedBox(height: 8),
                         Text(
                           _language.tAddMediaText(),
                           style: TextStyle(
-                            color: Theme.of(context).primaryColor,
+                            color: isDarkMode ? AppTheme.lightPrimaryColor : AppTheme.darkPrimaryColor,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -487,7 +490,7 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
                           _language.tRemainingImagesText(
                               widget.maxImages - _pickedImages.length),
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: isDarkMode ? AppTheme.lightPrimaryColor : AppTheme.darkPrimaryColor,
                             fontSize: 12,
                           ),
                         ),
@@ -530,13 +533,14 @@ class ImagePickerButtonState extends State<ImagePickerButton> {
   }
 
   void _pickMedia() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor: isDarkMode ? AppTheme.darkBackgroundColor : AppTheme.lightBackgroundColor,
       builder: (BuildContext context) {
         return Container(
           decoration: const BoxDecoration(
-            color: Colors.black87,
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(20),
             ),

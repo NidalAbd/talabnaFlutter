@@ -175,31 +175,58 @@ class ServicePostRepository {
     }
   }
 
-// Modify this existing method to include data_saver parameter
-  Future<List<ServicePost>> getServicePostsByCategory(
-      {required int categories, required int page}) async {
+// Add this to your ServicePostRepository class
+  Future<List<ServicePost>> getServicePostsByCategory({
+    required int categories,
+    required int page,
+    String? type,
+    double? minPrice,
+    double? maxPrice,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
+    final dataSaverEnabled = prefs.getBool('data_saver_enabled') ?? false;
 
     try {
+      // Build the base URL
+      var url = '$_baseUrl/api/service_posts/categories/$categories?page=$page&data_saver=${dataSaverEnabled ? 1 : 0}';
+
+      // Add filters to the URL if provided
+      if (type != null) {
+        url += '&type=$type';
+      }
+
+      if (minPrice != null && maxPrice != null) {
+        url += '&min_price=${minPrice.toInt()}&max_price=${maxPrice.toInt()}';
+      }
+
+      DebugLogger.log('Making API request to: $url', category: 'REPOSITORY');
+
       final response = await http.get(
-        Uri.parse(
-            '$_baseUrl/api/service_posts/categories/$categories?page=$page'),
+        Uri.parse(url),
         headers: {'Authorization': 'Bearer $token'},
       );
-      print(jsonDecode(response.body));
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseBody = jsonDecode(response.body);
+
+        if (!responseBody.containsKey('servicePosts') ||
+            !responseBody['servicePosts'].containsKey('data')) {
+          throw Exception('Invalid API response format');
+        }
+
         final List<dynamic> data = responseBody['servicePosts']['data'];
         final List<ServicePost> servicePosts =
         data.map((e) => ServicePost.fromJson(e)).toList();
+
         return servicePosts;
       } else {
-        throw Exception('Failed to load service posts for this category');
+        throw Exception('Failed to load service posts for this category: Status ${response.statusCode}');
       }
     } catch (e) {
-      print(e);
-      throw Exception('Failed to connect to server ');
+      DebugLogger.log('Error fetching service posts: $e',
+          category: 'SERVICE_POST');
+      throw Exception('Failed to connect to server: $e');
     }
   }
 
@@ -232,11 +259,14 @@ class ServicePostRepository {
     }
   }
 
-// Modify this existing method to include data_saver parameter
+// Update the getServicePostsByCategorySubCategory method in ServicePostRepository
   Future<List<ServicePost>> getServicePostsByCategorySubCategory({
     required int categories,
     required int subCategories,
     required int page,
+    String? type,
+    double? minPrice,
+    double? maxPrice,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
@@ -255,8 +285,18 @@ class ServicePostRepository {
     }
 
     try {
-      final url =
-          '$_baseUrl/api/service_posts/categories/$categories/sub_categories/$subCategories?page=$page&data_saver=${dataSaverEnabled ? 1 : 0}';
+      // Build the base URL
+      var url = '$_baseUrl/api/service_posts/categories/$categories/sub_categories/$subCategories?page=$page&data_saver=${dataSaverEnabled ? 1 : 0}';
+
+      // Add filters to the URL if provided
+      if (type != null) {
+        url += '&type=$type';
+      }
+
+      if (minPrice != null && maxPrice != null) {
+        url += '&min_price=${minPrice.toInt()}&max_price=${maxPrice.toInt()}';
+      }
+
       DebugLogger.log('Making API request to: $url', category: 'REPOSITORY');
 
       final response = await http.get(
@@ -546,13 +586,13 @@ class ServicePostRepository {
     try {
       final response = await http
           .put(
-            Uri.parse('$_baseUrl/api/service_posts/ChangeBadge/$servicePostID'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: encodedFormData,
-          )
+        Uri.parse('$_baseUrl/api/service_posts/ChangeBadge/$servicePostID'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: encodedFormData,
+      )
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -600,10 +640,10 @@ class ServicePostRepository {
 
       final response = await http
           .put(
-            Uri.parse(url),
-            headers: headers,
-            body: encodedFormData,
-          )
+        Uri.parse(url),
+        headers: headers,
+        body: encodedFormData,
+      )
           .timeout(const Duration(seconds: 30));
 
       print('🔵 [Response Received]');
@@ -628,7 +668,7 @@ class ServicePostRepository {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token');
     final request =
-        http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/service_posts'));
+    http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/service_posts'));
     request.headers['Authorization'] = 'Bearer $token';
     request.headers['Content-Type'] = 'application/x-www-form-urlencoded';
     request.fields['title'] = servicePost.title ?? 'null';

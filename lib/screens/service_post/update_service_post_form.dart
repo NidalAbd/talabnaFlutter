@@ -111,14 +111,25 @@ class _UpdatePostScreenState extends State<UpdatePostScreen> {
       }
     });
   }
-
   bool _validateCurrentStep() {
     switch (_currentStep) {
       case 0: // Images
         return true;
       case 1: // Details
-        return _titleController.text.isNotEmpty &&
-            _descriptionController.text.isNotEmpty;
+        if (_titleController.text.isEmpty || _descriptionController.text.isEmpty) {
+          return false;
+        }
+        if (_descriptionController.text.length < 80) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_language.getLanguage() == 'ar'
+                  ? 'يجب أن يكون الوصف ٨٠ حرف على الأقل'
+                  : 'Description must be at least 80 characters'),
+            ),
+          );
+          return false;
+        }
+        return true;
       case 2: // Category
         return _selectedCategory != null && _selectedSubCategory != null;
       case 3: // Price
@@ -272,9 +283,29 @@ class _UpdatePostScreenState extends State<UpdatePostScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  helperText: _language.getLanguage() == 'ar'
+                      ? 'يجب أن يكون الوصف ٨٠ حرف على الأقل (${_descriptionController.text.length}/80)'
+                      : 'Description must be at least 80 characters (${_descriptionController.text.length}/80)',
+                  helperStyle: TextStyle(
+                    color: _descriptionController.text.length < 80 ? Colors.red : Colors.green,
+                  ),
                 ),
-                validator: (value) =>
-                    (value?.isEmpty ?? true) ? _language.tRequiredText() : null,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return _language.tRequiredText();
+                  }
+                  if (value.length < 80) {
+                    return _language.getLanguage() == 'ar'
+                        ? 'يجب أن يكون الوصف ٨٠ حرف على الأقل'
+                        : 'Description must be at least 80 characters';
+                  }
+                  return null;
+                },
+                onChanged: (value) {
+                  setState(() {
+                    _markFormDirty();
+                  });
+                },
               ),
             ],
           ),
