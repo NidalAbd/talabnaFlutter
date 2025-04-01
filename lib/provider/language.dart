@@ -667,6 +667,18 @@ class Language extends ChangeNotifier {
     }
   }
 
+  String getDeleteConfirmationText() {
+    final currentLanguage = getLanguage();
+    switch (currentLanguage) {
+      case 'ar':
+        return 'هل تريد بالتأكيد حذف هذا المنشور';
+      case 'en':
+        return 'Are you sure you want to delete this post?';
+      default:
+        return 'Are you sure you want to delete this post?';
+    }
+  }
+
   String getAddCommentText() {
     final currentLanguage = getLanguage();
     switch (currentLanguage) {
@@ -3609,9 +3621,9 @@ class Language extends ChangeNotifier {
     final currentLanguage = getLanguage();
     switch (currentLanguage) {
       case 'ar':
-        return 'الملف الشخصي';
+        return 'الصفحة الشخصية';
       case 'en':
-        return 'Profile';
+        return 'Profile Page';
       case 'Es':
         return 'Perfil';
       case '中文':
@@ -4055,9 +4067,9 @@ class Language extends ChangeNotifier {
     final currentLanguage = getLanguage();
     switch (currentLanguage) {
       case 'ar':
-        return 'تحديث المعلومات';
+        return 'بياناتي';
       case 'en':
-        return 'Update Info';
+        return 'Profile Data';
       case 'Es':
         return 'Actualizar información';
       case '中文':

@@ -13,6 +13,7 @@ import 'package:talabna/screens/service_post/change_category_subcategory.dart';
 import 'package:talabna/screens/service_post/update_service_post_form.dart';
 
 import '../../data/models/user.dart';
+import '../../provider/language.dart';
 
 class ServicePostAction extends StatefulWidget {
   const ServicePostAction({
@@ -40,6 +41,7 @@ class _ServicePostActionState extends State<ServicePostAction>
     with SingleTickerProviderStateMixin {
   late int? currentUserId;
   late bool isOwnPost = false;
+  final Language language = Language();
 
   @override
   void initState() {
@@ -114,7 +116,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                         children: [
                           ListTile(
                             leading: const Icon(Icons.edit),
-                            title: const Text('Edit'),
+                            title:  Text(language.tEditText(),),
                             onTap: () {
                               Navigator.pop(
                                   context); // Dismiss the bottom sheet
@@ -132,7 +134,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                           ),
                           ListTile(
                             leading: const Icon(Icons.category),
-                            title: const Text('Change Category'),
+                            title:  Text(language.tChangeCategoryText(),),
                             onTap: () {
                               Navigator.pop(
                                   context); // Dismiss the bottom sheet
@@ -150,7 +152,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                           ),
                           ListTile(
                             leading: const Icon(Icons.star),
-                            title: const Text('Make Badge'),
+                            title:  Text(language.tChangeBadgeText(),),
                             onTap: () {
                               Navigator.pop(
                                   context); // Dismiss the bottom sheet
@@ -169,7 +171,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                           ),
                           ListTile(
                             leading: const Icon(Icons.delete),
-                            title: const Text('Delete'),
+                            title:  Text(language.tDeleteText(),),
                             onTap: () async {
                               bool? result = await showDialog(
                                 context: context,
@@ -185,7 +187,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                                               .error),
                                       const SizedBox(width: 8),
                                       Text(
-                                        'Delete Post',
+                                          language.tDeleteText(),
                                         style: TextStyle(
                                           fontSize: 22,
                                           fontWeight: FontWeight.bold,
@@ -197,7 +199,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                                     ],
                                   ),
                                   content: Text(
-                                    'Are you sure you want to delete this post?',
+                                    language.getDeleteConfirmationText(),
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Theme.of(context)
@@ -210,7 +212,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                                       onPressed: () =>
                                           Navigator.of(context).pop(false),
                                       child: Text(
-                                        'Cancel',
+                                        language.cancel(),
                                         style: TextStyle(
                                           color: Theme.of(context)
                                               .colorScheme
@@ -233,8 +235,8 @@ class _ServicePostActionState extends State<ServicePostAction>
                                         _deletePost(
                                             context); // Call the _deletePost method
                                       },
-                                      child: const Text(
-                                        'Delete',
+                                      child:  Text(
+                                        language.tDeleteText(),
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 16,
@@ -253,7 +255,7 @@ class _ServicePostActionState extends State<ServicePostAction>
                         leading: const Icon(
                           Icons.report,
                         ),
-                        title: const Text('Report'),
+                        title:  Text(   language.tReportText(),),
                         onTap: () {
                           Navigator.pop(context);
                           showModalBottomSheet(

@@ -70,10 +70,7 @@ class NotificationsScreenState extends State<NotificationsScreen>
   }
 
   void _handleNotificationTap(Notifications notification) {
-    // Mark notification as read first
-    _handleNotificationMarkedAsRead(notification.id);
-
-    // Check if this is a post-related notification
+    _handleNotificationMarkedAsRead(notification.id , showAlert: false);
     final int? postId = notification.extractPostId();
     if (postId != null) {
       DebugLogger.log(
@@ -172,7 +169,7 @@ class NotificationsScreenState extends State<NotificationsScreen>
   }
 
   // Handle individual notification being marked as read
-  bool _handleNotificationMarkedAsRead(int notificationId) {
+  bool _handleNotificationMarkedAsRead(int notificationId , {bool showAlert = true}) {
     // Update local tracking immediately for UI response
     setState(() {
       _locallyMarkedAsRead.add(notificationId);
@@ -186,27 +183,33 @@ class NotificationsScreenState extends State<NotificationsScreen>
       ),
     );
 
-    // Show status update to user with a subtle snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
-            SizedBox(width: 10),
-            Text('Marked as read'),
-          ],
+    if(showAlert){
+      // Show status update to user with a subtle snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Text('Marked as read'),
+            ],
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          backgroundColor: Colors.green.shade800,
+          duration: const Duration(seconds: 1),
+          margin: EdgeInsets.only(
+            bottom: MediaQuery.of(context).size.height * 0.05,
+            left: 20,
+            right: 20,
+          ),
         ),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        backgroundColor: Colors.green.shade800,
-        duration: const Duration(seconds: 1),
-        margin: EdgeInsets.only(
-          bottom: MediaQuery.of(context).size.height * 0.05,
-          left: 20,
-          right: 20,
-        ),
-      ),
-    );
+      );
+    }
+    else{
+
+    }
+
 
     return true;
   }
@@ -862,12 +865,43 @@ class _NotificationPostViewState extends State<NotificationPostView> {
               );
             }
           }
-
-          // Failure state
-          if (state is ServicePostOperationFailure) {
+          else {
+            if(state is ServicePostOperationFailure){
+              print('this state from ServicePostOperationFailure $state');
+              print('this state from ServicePostOperationFailure ${state.errorMessage}');
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Error'),
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+                body: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                        },
+                        child: const Text('Try Again'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Go Back'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }else{
+              print('this state from ServicePostOperationFailure $state');
+            }
             return Scaffold(
               appBar: AppBar(
-                title: const Text('Error'),
+                title: const Text('loading'),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back),
                   onPressed: () => Navigator.of(context).pop(),
@@ -877,18 +911,6 @@ class _NotificationPostViewState extends State<NotificationPostView> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Failed to load post',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Post ID: ${widget.postId}',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 24),
                     ElevatedButton(
                       onPressed: () {
                       },
@@ -904,27 +926,8 @@ class _NotificationPostViewState extends State<NotificationPostView> {
               ),
             );
           }
+          return SizedBox.shrink();
 
-          // Loading state (default)
-          return Scaffold(
-            appBar: AppBar(
-              title: const Text('Loading Post'),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-            body: const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Loading post...'),
-                ],
-              ),
-            ),
-          );
         },
       ),
     );

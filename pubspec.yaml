@@ -3,7 +3,7 @@ description: Talbna is a versatile app that allows users to post and browse vari
 
 publish_to: 'none'
 
-version: 1.3.2+45  # format is [version name]+[version code]
+version: 1.3.2+47  # format is [version name]+[version code]
 
 environment:
   sdk: ^3.6.2

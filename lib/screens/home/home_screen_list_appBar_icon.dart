@@ -537,6 +537,7 @@ class VertIconAppBar extends StatefulWidget {
                             Navigator.pop(context); // Close drawer
                             navigateToProfile(context);
                           },
+                          isDisabled: !isProfileComplete,
                         ),
                         DrawerMenuItem(
                           title: language.tUpdateInfoText(),
@@ -553,6 +554,7 @@ class VertIconAppBar extends StatefulWidget {
                             Navigator.pop(context); // Close drawer
                             navigateToFavorites(context);
                           },
+                          isDisabled: !isProfileComplete,
                         ),
                         DrawerMenuItem(
                           title: language.tPurchasePointsText(),
@@ -561,6 +563,7 @@ class VertIconAppBar extends StatefulWidget {
                             Navigator.pop(context); // Close drawer
                             navigateToPurchase(context);
                           },
+                          isDisabled: !isProfileComplete,
                         ),
                       ],
                       primaryColor: primaryColor,
@@ -583,6 +586,7 @@ class VertIconAppBar extends StatefulWidget {
                             Navigator.pop(context); // Close drawer
                             await toggleSubcategoryGridView(canToggle: true);
                           },
+                          isDisabled: !isProfileComplete,
                         ),
                         DrawerMenuItem(
                           title: language.tSettingsText(),
@@ -591,6 +595,7 @@ class VertIconAppBar extends StatefulWidget {
                             Navigator.pop(context); // Close drawer
                             navigateToSettings(context);
                           },
+
                         ),
                       ],
                       primaryColor: primaryColor,

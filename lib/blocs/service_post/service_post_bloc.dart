@@ -1592,8 +1592,6 @@ class ServicePostBloc extends Bloc<ServicePostEvent, ServicePostState> {
         // Update the cache with the new post
         _postByIdCache[event.servicePostId] = updatedPost;
       }
-
-      emit(ServicePostViewIncrementSuccess(servicePostId: event.servicePostId));
     } catch (e) {
       emit(ServicePostOperationFailure(
           errorMessage: e.toString(), event: 'ViewIncrementServicePostEvent'));

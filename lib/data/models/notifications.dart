@@ -60,7 +60,7 @@ class Notifications {
       case 'register':
         return Icons.app_registration;
       case 'post':
-        return Icons.post_add;
+        return Icons.arrow_forward;
       case 'badge':
         return Icons.badge;
       case 'password':

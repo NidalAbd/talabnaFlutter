@@ -419,7 +419,7 @@ class SubCategoryPostScreenState extends State<SubCategoryPostScreen> with Singl
                 OutlinedButton.icon(
                   onPressed: () => _applyFilters(FilterOptions()),
                   icon: const Icon(Icons.filter_alt_off),
-                  label: Text(isArabic ? 'إعادة ضبط الفلترة' : 'Reset Filters'),
+                  label: Text(isArabic ? 'إعادة ضبط الفلترة' : 'Reset Filters', ) ,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
@@ -436,8 +436,6 @@ class SubCategoryPostScreenState extends State<SubCategoryPostScreen> with Singl
                   icon: const Icon(Icons.add),
                   label: Text(language.getCreatePostText()),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary,
-                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 28,
                       vertical: 14,

@@ -130,7 +130,7 @@ class _AnimatedBadgeBorderState extends State<AnimatedBadgeBorder>
     super.initState();
     // Very slow animation for elegant movement
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 15000),
+      duration: const Duration(milliseconds: 3000),
       vsync: this,
     );
 
